@@ -1,4 +1,4 @@
-import { readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, writeFileSync } from 'node:fs'
 import { relative, resolve } from 'node:path'
 import {
   cancel,
@@ -201,21 +201,39 @@ async function runExport(client: XoClient): Promise<void> {
     log.warn(warning)
   }
 
-  // No validator here — an empty answer is allowed (preview-only). clack's
-  // text() returns undefined for an empty submission, so normalize before trim.
-  const answer = unwrap(
-    await text({
-      message: 'Write exported config to (leave blank to preview only)',
-      placeholder: './xo-config.yaml',
-    })
-  )
-  const destination = (answer ?? '').trim()
+  // Explicit choice: a placeholder can look like a typed value in some
+  // terminals, so never infer "preview" from an empty text answer.
+  const sinkOptions: Opt[] = [
+    { value: 'file', label: 'Save to a file' },
+    { value: 'preview', label: 'Preview only (print here, write nothing)' },
+  ]
+  const sink = unwrap(await select<Opt[], string>({ message: 'Where should the export go?', options: sinkOptions }))
 
-  if (destination.length === 0) {
+  if (sink === 'preview') {
     note(yaml, 'Exported config')
     return
   }
+
+  // defaultValue (unlike placeholder) is actually returned on an empty submit.
+  const destination = unwrap(
+    await text({
+      message: 'File to write',
+      defaultValue: 'xo-config.yaml',
+      placeholder: 'xo-config.yaml',
+      validate: value => (value.trim().length === 0 ? 'A path is required.' : undefined),
+    })
+  ).trim()
+
   const outPath = resolve(process.cwd(), destination)
+  if (existsSync(outPath)) {
+    const overwrite = unwrap(
+      await confirm({ message: `${relative(process.cwd(), outPath) || outPath} exists — overwrite it?`, initialValue: false })
+    )
+    if (!overwrite) {
+      log.info('Export cancelled — file left unchanged.')
+      return
+    }
+  }
   writeFileSync(outPath, yaml)
   log.success(`Exported to ${relative(process.cwd(), outPath) || outPath}`)
 }

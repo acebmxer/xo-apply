@@ -1,4 +1,4 @@
-import { readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { cancel, confirm, intro, isCancel, log, note, outro, password, select, spinner, text, } from '@clack/prompts';
 import pc from 'picocolors';
@@ -140,18 +140,32 @@ async function runExport(client) {
     for (const warning of warnings) {
         log.warn(warning);
     }
-    // No validator here — an empty answer is allowed (preview-only). clack's
-    // text() returns undefined for an empty submission, so normalize before trim.
-    const answer = unwrap(await text({
-        message: 'Write exported config to (leave blank to preview only)',
-        placeholder: './xo-config.yaml',
-    }));
-    const destination = (answer ?? '').trim();
-    if (destination.length === 0) {
+    // Explicit choice: a placeholder can look like a typed value in some
+    // terminals, so never infer "preview" from an empty text answer.
+    const sinkOptions = [
+        { value: 'file', label: 'Save to a file' },
+        { value: 'preview', label: 'Preview only (print here, write nothing)' },
+    ];
+    const sink = unwrap(await select({ message: 'Where should the export go?', options: sinkOptions }));
+    if (sink === 'preview') {
         note(yaml, 'Exported config');
         return;
     }
+    // defaultValue (unlike placeholder) is actually returned on an empty submit.
+    const destination = unwrap(await text({
+        message: 'File to write',
+        defaultValue: 'xo-config.yaml',
+        placeholder: 'xo-config.yaml',
+        validate: value => (value.trim().length === 0 ? 'A path is required.' : undefined),
+    })).trim();
     const outPath = resolve(process.cwd(), destination);
+    if (existsSync(outPath)) {
+        const overwrite = unwrap(await confirm({ message: `${relative(process.cwd(), outPath) || outPath} exists — overwrite it?`, initialValue: false }));
+        if (!overwrite) {
+            log.info('Export cancelled — file left unchanged.');
+            return;
+        }
+    }
     writeFileSync(outPath, yaml);
     log.success(`Exported to ${relative(process.cwd(), outPath) || outPath}`);
 }
