@@ -25,7 +25,8 @@ no way to write them down in a reviewable file — rebuilding an XO means
 re-creating every backup job by hand in the UI. With xo-apply:
 
 - **Rebuild in seconds**: reinstall XO (e.g. with
-  [install_xen_orchestra](https://github.com/...)), then `xo-apply apply config.yaml`.
+  [install_xen_orchestra](https://github.com/acebmxer/install_xen_orchestra)),
+  then `xo-apply apply config.yaml`.
 - **Review changes in git**: every config change is a commit with an author and a diff.
 - **Detect drift**: `xo-apply diff` tells you when someone changed a job in the
   UI and it no longer matches the file.
@@ -33,9 +34,22 @@ re-creating every backup job by hand in the UI. With xo-apply:
 
 ## Install
 
+Install directly from GitHub with npm:
+
 ```bash
-npm install -g xo-apply     # or: npx xo-apply ...
+npm install -g github:acebmxer/xo-apply
 ```
+
+npm clones the repo and builds it automatically. Verify with:
+
+```bash
+xo-apply --version
+```
+
+To upgrade later, re-run the same install command.
+
+> Publishing to the npm registry (`npm install -g xo-apply`) is planned; until
+> then the GitHub install above is the supported method.
 
 Requires Node.js ≥ 20 and a Xen Orchestra recent enough to expose the REST API
 (`/rest/v0` — any current XO from sources or XOA).
