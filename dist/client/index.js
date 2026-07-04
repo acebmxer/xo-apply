@@ -71,6 +71,7 @@ export class XoClient {
     listCallJobs() {
         return this.#rpc.call('job.getAll');
     }
+    /** job.create returns the new job's id as a plain string. */
     createCallJob(params) {
         return this.#rpc.call('job.create', { job: params });
     }

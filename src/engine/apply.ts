@@ -463,7 +463,7 @@ async function applySequence(
   const paramsVector = buildParamsVector(scheduleIds)
 
   if (kind === 'create') {
-    const created = await client.createCallJob({
+    const createdJobId = await client.createCallJob({
       type: 'call',
       key: 'genericTask',
       method: SEQUENCE_METHOD,
@@ -471,7 +471,7 @@ async function applySequence(
       paramsVector,
     })
     await client.createSchedule({
-      jobId: created.id,
+      jobId: createdJobId,
       cron: desired.cron,
       enabled: desired.enabled,
       name: '',

@@ -184,7 +184,8 @@ export class XoClient {
     return this.#rpc.call('job.getAll')
   }
 
-  createCallJob(params: Record<string, unknown>): Promise<XoCallJob> {
+  /** job.create returns the new job's id as a plain string. */
+  createCallJob(params: Record<string, unknown>): Promise<string> {
     return this.#rpc.call('job.create', { job: params })
   }
 
