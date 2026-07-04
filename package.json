@@ -1,0 +1,46 @@
+{
+  "name": "xo-apply",
+  "version": "0.1.0",
+  "description": "Configuration-as-code for Xen Orchestra: declare backup remotes, jobs and schedules in YAML and reconcile a running XO to match (GitOps-style)",
+  "keywords": [
+    "xen-orchestra",
+    "xcp-ng",
+    "backup",
+    "gitops",
+    "infrastructure-as-code"
+  ],
+  "author": "acebmxer",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "bin": {
+    "xo-apply": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "example-config.yaml",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "picocolors": "^1.1.1",
+    "xo-lib": "^0.11.2",
+    "xo-remote-parser": "^0.10.1",
+    "yaml": "^2.6.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

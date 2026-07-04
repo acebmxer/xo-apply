@@ -1,0 +1,112 @@
+import pc from 'picocolors'
+import { maskUrl } from '../resources/remotes.js'
+import type { Plan } from './plan.js'
+import { stableStringify } from '../resources/patterns.js'
+
+function fmtValue(value: unknown): string {
+  if (value === undefined) {
+    return '(unset)'
+  }
+  if (typeof value === 'string') {
+    return value
+  }
+  return stableStringify(value)
+}
+
+/** Render a plan as human-readable colored text. */
+export function renderPlan(plan: Plan, { prune = false } = {}): string {
+  const lines: string[] = []
+  let creates = 0
+  let updates = 0
+  let deletes = 0
+
+  if (plan.remotesManaged) {
+    lines.push(pc.bold('Remotes:'))
+    for (const r of plan.remotes) {
+      if (r.kind === 'create') {
+        creates++
+        lines.push(pc.green(`  + create  ${r.desired.name}`) + pc.dim(`  (${maskUrl(r.desired.url)})`))
+      } else if (r.kind === 'update') {
+        updates++
+        lines.push(pc.yellow(`  ~ update  ${r.desired.name}`))
+        for (const c of r.changes) {
+          lines.push(pc.yellow(`      ${c.field}: `) + pc.dim(`${fmtValue(c.from)} → ${fmtValue(c.to)}`))
+        }
+      } else {
+        lines.push(pc.dim(`  = ok      ${r.desired.name}`))
+      }
+    }
+    for (const r of plan.untrackedRemotes) {
+      if (prune) {
+        deletes++
+        lines.push(pc.red(`  - delete  ${r.name}`) + pc.dim(`  (${maskUrl(r.url)})`))
+      } else {
+        lines.push(pc.magenta(`  ! untracked  ${r.name}`) + pc.dim('  (not in file; use --prune to delete)'))
+      }
+    }
+    if (plan.remotes.length === 0 && plan.untrackedRemotes.length === 0) {
+      lines.push(pc.dim('  (none)'))
+    }
+    lines.push('')
+  }
+
+  if (plan.jobsManaged) {
+    lines.push(pc.bold('Backup jobs:'))
+    for (const j of plan.jobs) {
+      if (j.kind === 'create') {
+        creates++
+        const nSched = j.desired.schedules.length
+        lines.push(
+          pc.green(`  + create  ${j.desired.name}`) +
+            pc.dim(`  (${j.desired.mode}, ${nSched} schedule${nSched === 1 ? '' : 's'})`)
+        )
+      } else if (j.kind === 'update') {
+        updates++
+        lines.push(pc.yellow(`  ~ update  ${j.desired.name}`))
+        for (const c of j.diff.changes) {
+          lines.push(pc.yellow(`      ${c.field}: `) + pc.dim(`${fmtValue(c.from)} → ${fmtValue(c.to)}`))
+        }
+        for (const sc of j.diff.scheduleChanges) {
+          if (sc.kind === 'create') {
+            lines.push(pc.green(`      + schedule ${sc.desired.name}`) + pc.dim(`  (${sc.desired.cron})`))
+          } else if (sc.kind === 'delete') {
+            lines.push(pc.red(`      - schedule ${sc.actual.name ?? sc.actual.id}`) + pc.dim(`  (${sc.actual.cron})`))
+          } else {
+            lines.push(pc.yellow(`      ~ schedule ${sc.desired.name}`))
+            for (const c of sc.changes) {
+              lines.push(pc.yellow(`          ${c.field}: `) + pc.dim(`${fmtValue(c.from)} → ${fmtValue(c.to)}`))
+            }
+          }
+        }
+      } else {
+        lines.push(pc.dim(`  = ok      ${j.desired.name}`))
+      }
+    }
+    for (const j of plan.untrackedJobs) {
+      if (prune) {
+        deletes++
+        lines.push(pc.red(`  - delete  ${j.name}`) + pc.dim(`  (${j.mode})`))
+      } else {
+        lines.push(pc.magenta(`  ! untracked  ${j.name}`) + pc.dim('  (not in file; use --prune to delete)'))
+      }
+    }
+    if (plan.jobs.length === 0 && plan.untrackedJobs.length === 0) {
+      lines.push(pc.dim('  (none)'))
+    }
+    lines.push('')
+  }
+
+  if (!plan.remotesManaged && !plan.jobsManaged) {
+    lines.push(pc.dim('Nothing is managed by this file (no remotes/backupJobs sections).'))
+    lines.push('')
+  }
+
+  const untracked = plan.untrackedRemotes.length + plan.untrackedJobs.length
+  const summaryParts = [
+    pc.green(`${creates} to create`),
+    pc.yellow(`${updates} to update`),
+    prune ? pc.red(`${deletes} to delete`) : pc.magenta(`${untracked} untracked`),
+  ]
+  lines.push(pc.bold(`Plan: ${summaryParts.join(pc.dim(', '))}`))
+  return lines.join('\n')
+}

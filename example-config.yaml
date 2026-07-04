@@ -1,0 +1,85 @@
+# Example xo-apply configuration.
+# Copy this into your own PRIVATE repo, edit, then:
+#   export XO_URL=https://xo.example.lan XO_TOKEN=...
+#   xo-apply diff config.yaml
+#   xo-apply apply config.yaml
+#
+# Secrets never go in this file: use ${env:VAR_NAME} placeholders,
+# resolved from environment variables when the tool runs.
+#
+# A section that is ABSENT is unmanaged (xo-apply won't touch or report that
+# resource type). A present-but-empty section means "manage this type, none
+# should exist" (only deleted when you pass --prune).
+
+remotes:
+  # NFS share on a NAS
+  - name: nas-backups
+    type: nfs
+    host: 192.168.1.50
+    path: /export/xo-backups
+    # port: 2049                # optional
+    # mountOptions: vers=4      # optional mount(8) options
+
+  # SMB / Windows share — host is "HOST\share" (single backslash in YAML
+  # double-quoted strings must be written as \\)
+  - name: windows-share
+    type: smb
+    host: "192.168.1.60\\backups"
+    domain: WORKGROUP
+    username: backup
+    password: ${env:SMB_BACKUP_PASSWORD}
+    # path: xo                  # optional subfolder inside the share
+
+  # S3-compatible object storage (AWS, MinIO, Backblaze B2, ...)
+  - name: offsite-s3
+    type: s3
+    host: s3.us-east-1.amazonaws.com
+    path: my-bucket/xo-backups      # bucket/directory
+    accessKey: AKIAEXAMPLE
+    secretKey: ${env:S3_SECRET_KEY}
+    region: us-east-1
+    # protocol: http            # for http-only endpoints (e.g. local MinIO)
+
+  # Directory local to the XO VM (e.g. a mounted USB disk)
+  - name: local-disk
+    type: local
+    path: /mnt/backup-disk
+
+backupJobs:
+  # Delta (incremental) backup of every VM tagged "critical", every night
+  - name: nightly-critical
+    mode: delta
+    vms:
+      tag: critical
+    remotes: [nas-backups, offsite-s3]
+    settings:            # optional global job settings, passed through to XO
+      concurrency: 2
+      # timezone: America/New_York
+      # maxExportRate: 104857600        # bytes/s
+      # nRetriesVmBackupFailures: 2
+      # reportWhen: failure
+    schedules:
+      - name: nightly
+        cron: "0 2 * * *"
+        retention: 14              # backups kept on the remotes
+        # snapshotRetention: 3     # snapshots kept on the pool
+        # timezone: America/New_York
+        # enabled: false           # schedules are enabled by default
+
+  # Weekly full backup of specific VMs, selected by name
+  - name: weekly-full
+    mode: full
+    compression: zstd
+    vms:
+      names: [dc-01, mail-01]
+      # ...or select by uuid:  uuids: [770aa52a-fd42-8faf-f167-8c5c4a237cac]
+      # ...or pass a raw XO smart-mode pattern for anything more complex:
+      # raw:
+      #   type: VM
+      #   tags:
+      #     __or: [[prod]]
+    remotes: [nas-backups]
+    schedules:
+      - name: weekly
+        cron: "0 3 * * 0"
+        retention: 8
