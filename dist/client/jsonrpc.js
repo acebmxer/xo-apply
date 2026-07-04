@@ -1,4 +1,5 @@
-import Xo from 'xo-lib';
+import XoLib from 'xo-lib';
+const Xo = (XoLib.default ?? XoLib);
 /**
  * Wrapper around Vates' xo-lib (the JSON-RPC websocket client used by xo-cli).
  * Used for operations the REST API does not support yet

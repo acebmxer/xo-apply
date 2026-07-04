@@ -1,4 +1,9 @@
-import Xo from 'xo-lib'
+import XoLib from 'xo-lib'
+
+// xo-lib is Babel-compiled CommonJS: under Node ESM the import resolves to the
+// module.exports object and the actual class sits on its `default` property.
+type Xo = XoLib
+const Xo: typeof XoLib = ((XoLib as unknown as { default?: typeof XoLib }).default ?? XoLib) as typeof XoLib
 
 export interface JsonRpcClientOptions {
   url: string
