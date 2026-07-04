@@ -140,10 +140,13 @@ async function runExport(client) {
     for (const warning of warnings) {
         log.warn(warning);
     }
-    const destination = unwrap(await text({
+    // No validator here — an empty answer is allowed (preview-only). clack's
+    // text() returns undefined for an empty submission, so normalize before trim.
+    const answer = unwrap(await text({
         message: 'Write exported config to (leave blank to preview only)',
         placeholder: './xo-config.yaml',
-    })).trim();
+    }));
+    const destination = (answer ?? '').trim();
     if (destination.length === 0) {
         note(yaml, 'Exported config');
         return;

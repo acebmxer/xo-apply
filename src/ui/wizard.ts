@@ -201,12 +201,15 @@ async function runExport(client: XoClient): Promise<void> {
     log.warn(warning)
   }
 
-  const destination = unwrap(
+  // No validator here — an empty answer is allowed (preview-only). clack's
+  // text() returns undefined for an empty submission, so normalize before trim.
+  const answer = unwrap(
     await text({
       message: 'Write exported config to (leave blank to preview only)',
       placeholder: './xo-config.yaml',
     })
-  ).trim()
+  )
+  const destination = (answer ?? '').trim()
 
   if (destination.length === 0) {
     note(yaml, 'Exported config')
