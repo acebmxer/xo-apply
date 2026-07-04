@@ -58,15 +58,36 @@ To upgrade later, re-run the same install command.
 > Publishing to the npm registry (`npm install -g xo-apply`) is planned; until
 > then the GitHub install above is the supported method.
 
-**If you get `EACCES: permission denied`**: your npm global directory is
-root-owned (the default on many Linux distros). Rather than using `sudo`,
-point npm at a directory you own (one-time setup):
+**On Linux/macOS, if you get `EACCES: permission denied`**: your npm global
+directory is root-owned (the default on many Linux distros). Rather than using
+`sudo`, point npm at a directory you own (one-time setup):
 
 ```bash
 npm config set prefix ~/.npm-global
 echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.zshrc   # or ~/.bashrc
 source ~/.zshrc
 npm install -g https://github.com/acebmxer/xo-apply/archive/refs/heads/main.tar.gz
+```
+
+### Windows
+
+xo-apply runs on Windows — it's pure Node.js and talks to XO over the network,
+so nothing is platform-specific. Install [Node.js ≥ 20](https://nodejs.org/)
+(the installer adds npm's global bin to your `PATH` automatically), then in
+**PowerShell** run the same one-liner:
+
+```powershell
+npm install -g https://github.com/acebmxer/xo-apply/archive/refs/heads/main.tar.gz
+xo-apply --version
+```
+
+You normally don't need the `npm config set prefix` / PATH steps above — those
+are for Unix shells. Set connection variables with PowerShell syntax when using
+env vars instead of `--url`/`--token`:
+
+```powershell
+$env:XO_URL = "https://xo.example.lan"
+$env:XO_TOKEN = "..."
 ```
 
 Requires Node.js ≥ 20 and a Xen Orchestra recent enough to expose the REST API
@@ -101,6 +122,23 @@ On a fresh XO installed from sources, the default login is `admin@admin.net` /
 The token must belong to an **admin** user (backup management requires it).
 
 ## Commands
+
+### Interactive mode (no arguments)
+
+Run `xo-apply` with **no subcommand** to launch a guided, menu-driven UI in your
+terminal — the friendliest way to get started:
+
+```bash
+xo-apply
+```
+
+It walks you through connecting (prefilled from `XO_URL`/`XO_TOKEN` or `--url`/
+`--token` if set), picks a config file from the current directory, shows the
+plan, and runs diff / apply / export for you. Every scriptable subcommand below
+still works exactly as before, so CI and automation are unaffected. The
+interactive UI needs a real terminal; in a pipe or CI job, use the subcommands.
+
+### Scriptable subcommands
 
 | Command | What it does |
 |---|---|

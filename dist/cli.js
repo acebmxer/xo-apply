@@ -9,6 +9,7 @@ import { applyPlan, fetchActualState } from './engine/apply.js';
 import { renderPlan } from './engine/diff.js';
 import { buildPlan, planHasChanges, planHasDrift } from './engine/plan.js';
 import { exportSpec } from './export/export.js';
+import { runWizard } from './ui/wizard.js';
 const VERSION = '0.1.0';
 function getConnection(options) {
     const url = options.url ?? process.env.XO_URL;
@@ -147,6 +148,17 @@ program
         });
         // the JSON-RPC websocket can keep the event loop alive after close()
         process.exit(typeof process.exitCode === 'number' ? process.exitCode : 0);
+    }
+    catch (error) {
+        fail(error);
+    }
+});
+// Bare `xo-apply` (no subcommand) launches the interactive wizard.
+// Global options like --url/--token still apply and are read from program.opts()
+// inside the wizard via the same env-var fallback the subcommands use.
+program.action(async () => {
+    try {
+        process.exit(await runWizard(program.opts()));
     }
     catch (error) {
         fail(error);
