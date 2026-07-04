@@ -6,7 +6,7 @@ import { XoClient } from '../client/index.js';
 import { loadSpec } from '../config/load.js';
 import { applyPlan, fetchActualState } from '../engine/apply.js';
 import { renderPlan } from '../engine/diff.js';
-import { buildPlan, planHasChanges, planHasDrift } from '../engine/plan.js';
+import { buildPlan, planHasChanges, planHasDrift, planUntrackedCount } from '../engine/plan.js';
 import { exportSpec } from '../export/export.js';
 /** Thrown internally to unwind to the top-level handler on user cancel. */
 class Cancelled extends Error {
@@ -120,7 +120,7 @@ async function runDiffApply(client, mode) {
         }
         return;
     }
-    const hasWork = planHasChanges(plan) || (prune && (plan.untrackedRemotes.length > 0 || plan.untrackedJobs.length > 0));
+    const hasWork = planHasChanges(plan) || (prune && planUntrackedCount(plan) > 0);
     if (!hasWork) {
         log.success('Nothing to do: XO matches the config file.');
         return;

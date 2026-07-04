@@ -83,3 +83,52 @@ backupJobs:
       - name: weekly
         cron: "0 3 * * 0"
         retention: 8
+
+  # Disaster Recovery / Continuous Replication: instead of (or in addition to)
+  # remotes, target one or more SRs. mode:full => DR, mode:delta => CR.
+  - name: dr-critical
+    mode: full            # delta = Continuous Replication
+    vms:
+      tag: critical
+    srs: [4991d4aa-ed84-599b-7d19-97f2f943a366]   # target SR UUID(s)
+    # remotes: []         # SR-only is fine; may be combined with remotes
+    schedules:
+      - name: hourly-dr
+        cron: "0 * * * *"
+        retention: 3      # replicas kept on the SR
+
+# Metadata backups: pool metadata and/or XO's own configuration.
+metadataBackups:
+  - name: xo-config
+    xoMetadata: true                 # back up XO's own config
+    pools: [939ed551-fbd6-9868-52d8-d3997b7bf7da]   # pool UUID(s) for pool metadata
+    remotes: [nas-backups]
+    schedules:
+      - name: daily
+        cron: "0 21 * * *"
+        xoRetention: 7               # XO metadata backups kept
+        poolRetention: 7             # pool metadata backups kept
+
+# Mirror backups: copy an existing remote's backups onto other remote(s),
+# e.g. push local backups offsite to S3.
+mirrorBackups:
+  - name: offsite-mirror
+    mode: full           # full or delta, to match the source backups
+    sourceRemote: nas-backups
+    remotes: [offsite-s3]
+    schedules:
+      - name: nightly-mirror
+        cron: "0 5 * * *"
+        retention: 14
+
+# Sequences: run backup schedules one after another. Each step names a job and
+# one of its schedules (from any job kind above, or already in XO). The sequence
+# has its own cron for when the whole chain runs.
+sequences:
+  - name: nightly-then-metadata
+    steps:
+      - { job: nightly-critical, schedule: nightly }
+      - { job: xo-config, schedule: daily }
+    cron: "0 22 * * *"
+    # enabled: false     # sequences are enabled by default
+    # timezone: America/New_York

@@ -25,6 +25,46 @@ export interface XoBackupJob {
   proxy?: string
 }
 
+export interface XoMetadataBackupJob {
+  id: string
+  name: string
+  type: 'metadataBackup'
+  pools?: Record<string, unknown>
+  remotes?: Record<string, unknown>
+  xoMetadata?: boolean
+  poolMetadata?: boolean
+  settings: Record<string, Record<string, unknown>>
+  proxy?: string
+}
+
+export interface XoMirrorBackupJob {
+  id: string
+  name: string
+  type: 'mirrorBackup'
+  mode: 'full' | 'delta'
+  /** id of the source remote whose backups are mirrored */
+  sourceRemote?: string
+  /** destination remotes (id pattern) */
+  remotes?: Record<string, unknown>
+  settings: Record<string, Record<string, unknown>>
+  proxy?: string
+}
+
+/**
+ * A "sequence" as shown in the XO UI is a generic call-job that runs a list of
+ * schedules in order. It lives in the `job` namespace (NOT backupNg), so it must
+ * be read via job.getAll and written via job.create/set/delete.
+ */
+export interface XoCallJob {
+  id: string
+  name: string
+  type: 'call'
+  key?: string
+  method: string
+  paramsVector?: Record<string, unknown>
+  userId?: string
+}
+
 export interface XoSchedule {
   id: string
   jobId: string
@@ -99,6 +139,61 @@ export class XoClient {
 
   async deleteBackupJob(id: string): Promise<void> {
     await this.#rpc.call('backupNg.deleteJob', { id })
+  }
+
+  // -- metadata backup jobs (pool / XO config metadata) ----------------------
+
+  listMetadataBackupJobs(): Promise<XoMetadataBackupJob[]> {
+    return this.#rpc.call('metadataBackup.getAllJobs')
+  }
+
+  createMetadataBackupJob(params: Record<string, unknown>): Promise<string> {
+    return this.#rpc.call('metadataBackup.createJob', params)
+  }
+
+  async editMetadataBackupJob(params: Record<string, unknown> & { id: string }): Promise<void> {
+    await this.#rpc.call('metadataBackup.editJob', params)
+  }
+
+  async deleteMetadataBackupJob(id: string): Promise<void> {
+    await this.#rpc.call('metadataBackup.deleteJob', { id })
+  }
+
+  // -- mirror backup jobs (replicate one remote's backups to another) --------
+
+  listMirrorBackupJobs(): Promise<XoMirrorBackupJob[]> {
+    return this.#rpc.call('mirrorBackup.getAllJobs')
+  }
+
+  createMirrorBackupJob(params: Record<string, unknown>): Promise<string> {
+    return this.#rpc.call('mirrorBackup.createJob', params)
+  }
+
+  async editMirrorBackupJob(params: Record<string, unknown> & { id: string }): Promise<void> {
+    await this.#rpc.call('mirrorBackup.editJob', params)
+  }
+
+  async deleteMirrorBackupJob(id: string): Promise<void> {
+    await this.#rpc.call('mirrorBackup.deleteJob', { id })
+  }
+
+  // -- sequences (generic call-jobs running schedule.runSequence) ------------
+
+  /** All generic jobs; sequences are those with method "schedule.runSequence". */
+  listCallJobs(): Promise<XoCallJob[]> {
+    return this.#rpc.call('job.getAll')
+  }
+
+  createCallJob(params: Record<string, unknown>): Promise<XoCallJob> {
+    return this.#rpc.call('job.create', { job: params })
+  }
+
+  async setCallJob(params: Record<string, unknown> & { id: string }): Promise<void> {
+    await this.#rpc.call('job.set', { job: params })
+  }
+
+  async deleteCallJob(id: string): Promise<void> {
+    await this.#rpc.call('job.delete', { id })
   }
 
   // -- schedules ---------------------------------------------------------------

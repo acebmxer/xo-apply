@@ -96,11 +96,87 @@ export function renderPlan(plan, { prune = false } = {}) {
         }
         lines.push('');
     }
-    if (!plan.remotesManaged && !plan.jobsManaged) {
-        lines.push(pc.dim('Nothing is managed by this file (no remotes/backupJobs sections).'));
+    const renderSimpleJobs = (title, managed, jobs, untrackedJobs, detail) => {
+        if (!managed)
+            return;
+        lines.push(pc.bold(title + ':'));
+        for (const j of jobs) {
+            if (j.kind === 'create') {
+                creates++;
+                lines.push(pc.green(`  + create  ${j.desired.name}`) + pc.dim(`  (${detail(j.desired)})`));
+            }
+            else if (j.kind === 'update') {
+                updates++;
+                lines.push(pc.yellow(`  ~ update  ${j.desired.name}`));
+                for (const c of j.diff.changes) {
+                    lines.push(pc.yellow(`      ${c.field}: `) + pc.dim(`${fmtValue(c.from)} → ${fmtValue(c.to)}`));
+                }
+            }
+            else {
+                lines.push(pc.dim(`  = ok      ${j.desired.name}`));
+            }
+        }
+        for (const j of untrackedJobs) {
+            if (prune) {
+                deletes++;
+                lines.push(pc.red(`  - delete  ${j.name}`));
+            }
+            else {
+                lines.push(pc.magenta(`  ! untracked  ${j.name}`) + pc.dim('  (not in file; use --prune to delete)'));
+            }
+        }
+        if (jobs.length === 0 && untrackedJobs.length === 0) {
+            lines.push(pc.dim('  (none)'));
+        }
+        lines.push('');
+    };
+    renderSimpleJobs('Metadata backups', plan.metadataManaged, plan.metadataJobs, plan.untrackedMetadataJobs, d => (d.xoMetadata ? 'XO metadata' : 'pool metadata'));
+    renderSimpleJobs('Mirror backups', plan.mirrorManaged, plan.mirrorJobs, plan.untrackedMirrorJobs, d => `mirror ${d.mode}`);
+    if (plan.sequencesManaged) {
+        lines.push(pc.bold('Sequences:'));
+        for (const s of plan.sequences) {
+            if (s.kind === 'create') {
+                creates++;
+                lines.push(pc.green(`  + create  ${s.desired.name}`) + pc.dim(`  (${s.desired.steps.length} steps, ${s.desired.cron})`));
+            }
+            else if (s.kind === 'update') {
+                updates++;
+                lines.push(pc.yellow(`  ~ update  ${s.desired.name}`));
+                for (const c of s.diff.changes) {
+                    lines.push(pc.yellow(`      ${c.field}: `) + pc.dim(`${fmtValue(c.from)} → ${fmtValue(c.to)}`));
+                }
+            }
+            else {
+                lines.push(pc.dim(`  = ok      ${s.desired.name}`));
+            }
+        }
+        for (const s of plan.untrackedSequences) {
+            if (prune) {
+                deletes++;
+                lines.push(pc.red(`  - delete  ${s.name}`));
+            }
+            else {
+                lines.push(pc.magenta(`  ! untracked  ${s.name}`) + pc.dim('  (not in file; use --prune to delete)'));
+            }
+        }
+        if (plan.sequences.length === 0 && plan.untrackedSequences.length === 0) {
+            lines.push(pc.dim('  (none)'));
+        }
         lines.push('');
     }
-    const untracked = plan.untrackedRemotes.length + plan.untrackedJobs.length;
+    if (!plan.remotesManaged &&
+        !plan.jobsManaged &&
+        !plan.metadataManaged &&
+        !plan.mirrorManaged &&
+        !plan.sequencesManaged) {
+        lines.push(pc.dim('Nothing is managed by this file (no remotes/backupJobs/metadataBackups/mirrorBackups/sequences sections).'));
+        lines.push('');
+    }
+    const untracked = plan.untrackedRemotes.length +
+        plan.untrackedJobs.length +
+        plan.untrackedMetadataJobs.length +
+        plan.untrackedMirrorJobs.length +
+        plan.untrackedSequences.length;
     const summaryParts = [
         pc.green(`${creates} to create`),
         pc.yellow(`${updates} to update`),

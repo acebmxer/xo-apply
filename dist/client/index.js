@@ -40,6 +40,46 @@ export class XoClient {
     async deleteBackupJob(id) {
         await this.#rpc.call('backupNg.deleteJob', { id });
     }
+    // -- metadata backup jobs (pool / XO config metadata) ----------------------
+    listMetadataBackupJobs() {
+        return this.#rpc.call('metadataBackup.getAllJobs');
+    }
+    createMetadataBackupJob(params) {
+        return this.#rpc.call('metadataBackup.createJob', params);
+    }
+    async editMetadataBackupJob(params) {
+        await this.#rpc.call('metadataBackup.editJob', params);
+    }
+    async deleteMetadataBackupJob(id) {
+        await this.#rpc.call('metadataBackup.deleteJob', { id });
+    }
+    // -- mirror backup jobs (replicate one remote's backups to another) --------
+    listMirrorBackupJobs() {
+        return this.#rpc.call('mirrorBackup.getAllJobs');
+    }
+    createMirrorBackupJob(params) {
+        return this.#rpc.call('mirrorBackup.createJob', params);
+    }
+    async editMirrorBackupJob(params) {
+        await this.#rpc.call('mirrorBackup.editJob', params);
+    }
+    async deleteMirrorBackupJob(id) {
+        await this.#rpc.call('mirrorBackup.deleteJob', { id });
+    }
+    // -- sequences (generic call-jobs running schedule.runSequence) ------------
+    /** All generic jobs; sequences are those with method "schedule.runSequence". */
+    listCallJobs() {
+        return this.#rpc.call('job.getAll');
+    }
+    createCallJob(params) {
+        return this.#rpc.call('job.create', { job: params });
+    }
+    async setCallJob(params) {
+        await this.#rpc.call('job.set', { job: params });
+    }
+    async deleteCallJob(id) {
+        await this.#rpc.call('job.delete', { id });
+    }
     // -- schedules ---------------------------------------------------------------
     listSchedules() {
         return this.#rpc.call('schedule.getAll');

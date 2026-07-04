@@ -20,6 +20,8 @@ export interface DesiredJob {
   compression?: 'native' | 'zstd'
   vms: Record<string, unknown>
   remoteNames: string[]
+  /** target SR UUIDs (DR/CR replication); empty for plain remote backups */
+  srIds: string[]
   settings: Record<string, unknown>
   schedules: DesiredSchedule[]
 }
@@ -72,6 +74,7 @@ export function jobSpecToDesired(spec: BackupJobSpec, ctx: VmResolutionContext):
     compression: spec.compression,
     vms,
     remoteNames: spec.remotes,
+    srIds: spec.srs,
     settings: spec.settings,
     schedules: spec.schedules.map(scheduleSpecToDesired),
   }
@@ -167,6 +170,11 @@ export function diffJob(desired: DesiredJob, actual: ActualJob, mapping: RemoteM
   const actualRemotes = actualRemoteNames(job, mapping)
   if (!deepEqual([...desired.remoteNames].sort(), [...actualRemotes].sort())) {
     changes.push({ field: 'remotes', from: actualRemotes, to: desired.remoteNames })
+  }
+
+  const actualSrs = extractIds(job.srs) ?? []
+  if (!deepEqual([...desired.srIds].sort(), [...actualSrs].sort())) {
+    changes.push({ field: 'srs', from: actualSrs, to: desired.srIds })
   }
 
   const actualGlobal = job.settings[''] ?? {}

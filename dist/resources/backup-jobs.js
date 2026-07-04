@@ -41,6 +41,7 @@ export function jobSpecToDesired(spec, ctx) {
         compression: spec.compression,
         vms,
         remoteNames: spec.remotes,
+        srIds: spec.srs,
         settings: spec.settings,
         schedules: spec.schedules.map(scheduleSpecToDesired),
     };
@@ -100,6 +101,10 @@ export function diffJob(desired, actual, mapping) {
     const actualRemotes = actualRemoteNames(job, mapping);
     if (!deepEqual([...desired.remoteNames].sort(), [...actualRemotes].sort())) {
         changes.push({ field: 'remotes', from: actualRemotes, to: desired.remoteNames });
+    }
+    const actualSrs = extractIds(job.srs) ?? [];
+    if (!deepEqual([...desired.srIds].sort(), [...actualSrs].sort())) {
+        changes.push({ field: 'srs', from: actualSrs, to: desired.srIds });
     }
     const actualGlobal = job.settings[''] ?? {};
     for (const [key, value] of Object.entries(desired.settings)) {

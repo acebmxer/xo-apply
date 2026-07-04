@@ -7,7 +7,7 @@ import { XoClient } from './client/index.js'
 import { loadSpec } from './config/load.js'
 import { applyPlan, fetchActualState } from './engine/apply.js'
 import { renderPlan } from './engine/diff.js'
-import { buildPlan, planHasChanges, planHasDrift } from './engine/plan.js'
+import { buildPlan, planHasChanges, planHasDrift, planUntrackedCount } from './engine/plan.js'
 import { exportSpec } from './export/export.js'
 import { runWizard } from './ui/wizard.js'
 
@@ -137,8 +137,7 @@ program
         const plan = buildPlan(spec, actual)
         console.log(renderPlan(plan, { prune }))
 
-        const hasWork =
-          planHasChanges(plan) || (prune && (plan.untrackedRemotes.length > 0 || plan.untrackedJobs.length > 0))
+        const hasWork = planHasChanges(plan) || (prune && planUntrackedCount(plan) > 0)
         if (!hasWork) {
           console.log(pc.green('\nNothing to do: XO matches the config file.'))
           return

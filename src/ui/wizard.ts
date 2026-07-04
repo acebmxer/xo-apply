@@ -18,7 +18,7 @@ import { XoClient } from '../client/index.js'
 import { loadSpec } from '../config/load.js'
 import { applyPlan, fetchActualState } from '../engine/apply.js'
 import { renderPlan } from '../engine/diff.js'
-import { buildPlan, planHasChanges, planHasDrift, type Plan } from '../engine/plan.js'
+import { buildPlan, planHasChanges, planHasDrift, planUntrackedCount, type Plan } from '../engine/plan.js'
 import { exportSpec } from '../export/export.js'
 
 /** A clack select option whose value is a plain string (drives Value inference). */
@@ -174,8 +174,7 @@ async function runDiffApply(client: XoClient, mode: 'diff' | 'apply'): Promise<v
     return
   }
 
-  const hasWork =
-    planHasChanges(plan) || (prune && (plan.untrackedRemotes.length > 0 || plan.untrackedJobs.length > 0))
+  const hasWork = planHasChanges(plan) || (prune && planUntrackedCount(plan) > 0)
   if (!hasWork) {
     log.success('Nothing to do: XO matches the config file.')
     return

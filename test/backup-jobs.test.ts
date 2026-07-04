@@ -35,7 +35,7 @@ describe('jobSpecToDesired', () => {
 
   it('resolves VM names to uuids', () => {
     const desired = jobSpecToDesired(
-      parseJob({ name: 'j', mode: 'full', vms: { names: ['web-01', 'db-01'] }, schedules: [] }),
+      parseJob({ name: 'j', mode: 'full', vms: { names: ['web-01', 'db-01'] }, remotes: ['nas'], schedules: [] }),
       vmIndex
     )
     expect(desired.vms).toEqual({ id: { __or: ['uuid-db', 'uuid-web'] } })
@@ -43,7 +43,7 @@ describe('jobSpecToDesired', () => {
 
   it('uses the single-id shape for one VM', () => {
     const desired = jobSpecToDesired(
-      parseJob({ name: 'j', mode: 'full', vms: { names: ['web-01'] }, schedules: [] }),
+      parseJob({ name: 'j', mode: 'full', vms: { names: ['web-01'] }, remotes: ['nas'], schedules: [] }),
       vmIndex
     )
     expect(desired.vms).toEqual({ id: 'uuid-web' })
@@ -51,13 +51,19 @@ describe('jobSpecToDesired', () => {
 
   it('rejects unknown VM names', () => {
     expect(() =>
-      jobSpecToDesired(parseJob({ name: 'j', mode: 'full', vms: { names: ['nope'] }, schedules: [] }), vmIndex)
+      jobSpecToDesired(
+        parseJob({ name: 'j', mode: 'full', vms: { names: ['nope'] }, remotes: ['nas'], schedules: [] }),
+        vmIndex
+      )
     ).toThrow(/no VM found/)
   })
 
   it('rejects ambiguous VM names', () => {
     expect(() =>
-      jobSpecToDesired(parseJob({ name: 'j', mode: 'full', vms: { names: ['clone'] }, schedules: [] }), vmIndex)
+      jobSpecToDesired(
+        parseJob({ name: 'j', mode: 'full', vms: { names: ['clone'] }, remotes: ['nas'], schedules: [] }),
+        vmIndex
+      )
     ).toThrow(/ambiguous/)
   })
 })

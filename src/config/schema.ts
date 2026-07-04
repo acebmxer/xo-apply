@@ -107,19 +107,121 @@ export type VmsSelector = z.infer<typeof vmsSelector>
 export const backupJobSpecSchema = z
   .object({
     name: z.string().min(1),
+    // full/delta VM backup to a remote; with `srs` this is DR (full) or CR (delta)
     mode: z.enum(['full', 'delta']),
     // only meaningful for mode: full; XO rejects it otherwise
     compression: z.enum(['native', 'zstd']).optional(),
     vms: vmsSelector,
     // remote names (defined in the remotes section or already existing in XO)
     remotes: z.array(z.string()).default([]),
+    // target SR UUIDs — turns this into a replication job (DR when mode:full,
+    // Continuous Replication when mode:delta). May be combined with remotes.
+    srs: z.array(z.string()).default([]),
     // free-form global job settings merged into XO's settings[''] —
     // e.g. concurrency, timezone, maxExportRate, nRetriesVmBackupFailures, reportWhen
     settings: z.record(z.unknown()).default({}),
     schedules: z.array(scheduleSpecSchema).default([]),
   })
   .strict()
+  .refine(v => v.remotes.length > 0 || v.srs.length > 0, {
+    message: 'backup job must target at least one remote or SR',
+  })
 export type BackupJobSpec = z.infer<typeof backupJobSpecSchema>
+
+// ---------------------------------------------------------------------------
+// Metadata backup jobs (pool metadata + XO config)
+// ---------------------------------------------------------------------------
+
+export const metadataScheduleSpecSchema = z
+  .object({
+    name: z.string().min(1),
+    cron: z.string().min(1),
+    enabled: z.boolean().default(true),
+    timezone: z.string().optional(),
+    // XO: retentionPoolMetadata / retentionXoMetadata
+    poolRetention: z.number().int().min(0).optional(),
+    xoRetention: z.number().int().min(0).optional(),
+    settings: z.record(z.unknown()).default({}),
+  })
+  .strict()
+export type MetadataScheduleSpec = z.infer<typeof metadataScheduleSpecSchema>
+
+export const metadataBackupSpecSchema = z
+  .object({
+    name: z.string().min(1),
+    // back up XO's own configuration
+    xoMetadata: z.boolean().default(false),
+    // pool UUIDs whose metadata to back up (pool metadata backup)
+    pools: z.array(z.string()).default([]),
+    remotes: z.array(z.string()).default([]),
+    settings: z.record(z.unknown()).default({}),
+    schedules: z.array(metadataScheduleSpecSchema).default([]),
+  })
+  .strict()
+  .refine(v => v.xoMetadata || v.pools.length > 0, {
+    message: 'metadata backup must set xoMetadata: true or list one or more pools',
+  })
+  .refine(v => v.remotes.length > 0, { message: 'metadata backup must target at least one remote' })
+export type MetadataBackupSpec = z.infer<typeof metadataBackupSpecSchema>
+
+// ---------------------------------------------------------------------------
+// Mirror backup jobs (replicate one remote's backups to others)
+// ---------------------------------------------------------------------------
+
+export const mirrorScheduleSpecSchema = z
+  .object({
+    name: z.string().min(1),
+    cron: z.string().min(1),
+    enabled: z.boolean().default(true),
+    timezone: z.string().optional(),
+    retention: z.number().int().min(0).optional(),
+    settings: z.record(z.unknown()).default({}),
+  })
+  .strict()
+export type MirrorScheduleSpec = z.infer<typeof mirrorScheduleSpecSchema>
+
+export const mirrorBackupSpecSchema = z
+  .object({
+    name: z.string().min(1),
+    mode: z.enum(['full', 'delta']),
+    // remote name whose backups are mirrored
+    sourceRemote: z.string().min(1),
+    // destination remote names
+    remotes: z.array(z.string()).nonempty(),
+    settings: z.record(z.unknown()).default({}),
+    schedules: z.array(mirrorScheduleSpecSchema).default([]),
+  })
+  .strict()
+export type MirrorBackupSpec = z.infer<typeof mirrorBackupSpecSchema>
+
+// ---------------------------------------------------------------------------
+// Sequences (run backup schedules one after another)
+// ---------------------------------------------------------------------------
+
+// A sequence step references a schedule by the job it belongs to and that
+// schedule's name. Jobs and schedules are matched by name at apply time.
+export const sequenceStepSchema = z
+  .object({
+    // name of a backupJob / metadataBackup / mirrorBackup defined here or in XO
+    job: z.string().min(1),
+    // that job's schedule name to run for this step
+    schedule: z.string().min(1),
+  })
+  .strict()
+export type SequenceStep = z.infer<typeof sequenceStepSchema>
+
+export const sequenceSpecSchema = z
+  .object({
+    name: z.string().min(1),
+    // ordered list of schedules to run
+    steps: z.array(sequenceStepSchema).nonempty(),
+    // when the sequence itself runs
+    cron: z.string().min(1),
+    enabled: z.boolean().default(true),
+    timezone: z.string().optional(),
+  })
+  .strict()
+export type SequenceSpec = z.infer<typeof sequenceSpecSchema>
 
 // ---------------------------------------------------------------------------
 // Top-level spec
@@ -132,6 +234,9 @@ export const specSchema = z
   .object({
     remotes: z.array(remoteSpecSchema).optional(),
     backupJobs: z.array(backupJobSpecSchema).optional(),
+    metadataBackups: z.array(metadataBackupSpecSchema).optional(),
+    mirrorBackups: z.array(mirrorBackupSpecSchema).optional(),
+    sequences: z.array(sequenceSpecSchema).optional(),
   })
   .strict()
 export type Spec = z.infer<typeof specSchema>
@@ -144,15 +249,27 @@ export function validateSpec(data: unknown): Spec {
   if (remoteDupes.length > 0) {
     throw new Error(`duplicate remote name(s): ${[...new Set(remoteDupes)].join(', ')}`)
   }
-  const jobDupes = dupes((spec.backupJobs ?? []).map(j => j.name))
+  // Job names must be unique across ALL job kinds — sequences reference jobs by
+  // name, and XO stores them in overlapping namespaces, so a name collision is
+  // ambiguous.
+  const allJobs: Array<{ kind: string; name: string; schedules: { name: string }[] }> = [
+    ...(spec.backupJobs ?? []).map(j => ({ kind: 'backup job', name: j.name, schedules: j.schedules })),
+    ...(spec.metadataBackups ?? []).map(j => ({ kind: 'metadata backup', name: j.name, schedules: j.schedules })),
+    ...(spec.mirrorBackups ?? []).map(j => ({ kind: 'mirror backup', name: j.name, schedules: j.schedules })),
+  ]
+  const jobDupes = dupes(allJobs.map(j => j.name))
   if (jobDupes.length > 0) {
-    throw new Error(`duplicate backup job name(s): ${[...new Set(jobDupes)].join(', ')}`)
+    throw new Error(`duplicate job name(s) across backup/metadata/mirror jobs: ${[...new Set(jobDupes)].join(', ')}`)
   }
-  for (const job of spec.backupJobs ?? []) {
+  for (const job of allJobs) {
     const schedDupes = dupes(job.schedules.map(s => s.name))
     if (schedDupes.length > 0) {
-      throw new Error(`backup job "${job.name}": duplicate schedule name(s): ${[...new Set(schedDupes)].join(', ')}`)
+      throw new Error(`${job.kind} "${job.name}": duplicate schedule name(s): ${[...new Set(schedDupes)].join(', ')}`)
     }
+  }
+  const seqDupes = dupes((spec.sequences ?? []).map(s => s.name))
+  if (seqDupes.length > 0) {
+    throw new Error(`duplicate sequence name(s): ${[...new Set(seqDupes)].join(', ')}`)
   }
   return spec
 }

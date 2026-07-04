@@ -2,6 +2,7 @@ import { stringify } from 'yaml'
 import type { ActualState } from '../engine/plan.js'
 import { extractIds, extractTags } from '../resources/patterns.js'
 import { remoteToSpec } from '../resources/remotes.js'
+import { extractSequenceScheduleIds, SEQUENCE_METHOD } from '../resources/sequences.js'
 
 export interface ExportResult {
   yaml: string
@@ -96,6 +97,12 @@ export function exportSpec(actual: ActualState): ExportResult {
       spec.remotes = remoteNames
     }
 
+    // target SRs (DR / Continuous Replication)
+    const srIds = extractIds(job.srs) ?? []
+    if (srIds.length > 0) {
+      spec.srs = srIds
+    }
+
     // global settings
     const globalSettings = { ...(job.settings[''] ?? {}) }
     if (Object.keys(globalSettings).length > 0) {
@@ -135,9 +142,117 @@ export function exportSpec(actual: ActualState): ExportResult {
     backupJobs.push(spec)
   }
 
+  // -- metadata backups -----------------------------------------------------
+
+  const metadataBackups: Record<string, unknown>[] = []
+  for (const job of actual.metadataJobs) {
+    const spec: Record<string, unknown> = { name: job.name }
+    if (job.xoMetadata) spec.xoMetadata = true
+    const poolIds = extractIds(job.pools) ?? []
+    if (poolIds.length > 0) spec.pools = poolIds
+    const remoteIds = extractIds(job.remotes) ?? []
+    const remoteNames = remoteIds.map(id => remoteNameById.get(id) ?? id)
+    if (remoteNames.length > 0) spec.remotes = remoteNames
+    const globalSettings = { ...(job.settings[''] ?? {}) }
+    if (Object.keys(globalSettings).length > 0) spec.settings = globalSettings
+    const scheds = schedulesByJob.get(job.id) ?? []
+    spec.schedules = scheds.map((s, i) => {
+      const out: Record<string, unknown> = {
+        name: s.name && s.name !== '' ? s.name : `schedule-${i + 1}`,
+        cron: s.cron,
+      }
+      if (s.enabled === false) out.enabled = false
+      if (s.timezone !== undefined) out.timezone = s.timezone
+      const set = job.settings[s.id] ?? {}
+      if (typeof set.retentionPoolMetadata === 'number') out.poolRetention = set.retentionPoolMetadata
+      if (typeof set.retentionXoMetadata === 'number') out.xoRetention = set.retentionXoMetadata
+      const extra = Object.fromEntries(
+        Object.entries(set).filter(([k]) => k !== 'retentionPoolMetadata' && k !== 'retentionXoMetadata')
+      )
+      if (Object.keys(extra).length > 0) out.settings = extra
+      return out
+    })
+    metadataBackups.push(spec)
+  }
+
+  // -- mirror backups -------------------------------------------------------
+
+  const mirrorBackups: Record<string, unknown>[] = []
+  for (const job of actual.mirrorJobs) {
+    const spec: Record<string, unknown> = { name: job.name, mode: job.mode }
+    if (job.sourceRemote !== undefined) {
+      spec.sourceRemote = remoteNameById.get(job.sourceRemote) ?? job.sourceRemote
+    }
+    const remoteIds = extractIds(job.remotes) ?? []
+    const remoteNames = remoteIds.map(id => remoteNameById.get(id) ?? id)
+    if (remoteNames.length > 0) spec.remotes = remoteNames
+    const globalSettings = { ...(job.settings[''] ?? {}) }
+    if (Object.keys(globalSettings).length > 0) spec.settings = globalSettings
+    const scheds = schedulesByJob.get(job.id) ?? []
+    spec.schedules = scheds.map((s, i) => {
+      const out: Record<string, unknown> = {
+        name: s.name && s.name !== '' ? s.name : `schedule-${i + 1}`,
+        cron: s.cron,
+      }
+      if (s.enabled === false) out.enabled = false
+      if (s.timezone !== undefined) out.timezone = s.timezone
+      const set = job.settings[s.id] ?? {}
+      if (typeof set.exportRetention === 'number' && set.exportRetention > 0) out.retention = set.exportRetention
+      const extra = Object.fromEntries(Object.entries(set).filter(([k]) => k !== 'exportRetention'))
+      if (Object.keys(extra).length > 0) out.settings = extra
+      return out
+    })
+    mirrorBackups.push(spec)
+  }
+
+  // -- sequences ------------------------------------------------------------
+
+  // schedule id → (jobName, scheduleName) across every job kind, so we can map
+  // a sequence's ordered schedule-id list back to readable step references.
+  const jobNameById = new Map<string, string>()
+  for (const j of actual.jobs) jobNameById.set(j.id, j.name)
+  for (const j of actual.metadataJobs) jobNameById.set(j.id, j.name)
+  for (const j of actual.mirrorJobs) jobNameById.set(j.id, j.name)
+  const stepByScheduleId = new Map<string, { job: string; schedule: string }>()
+  for (const s of actual.schedules) {
+    const jobName = jobNameById.get(s.jobId)
+    if (jobName !== undefined && s.name) {
+      stepByScheduleId.set(s.id, { job: jobName, schedule: s.name })
+    }
+  }
+  const triggerByJobId = new Map<string, typeof actual.schedules[number]>()
+  for (const s of actual.schedules) triggerByJobId.set(s.jobId, s)
+
+  const sequences: Record<string, unknown>[] = []
+  for (const job of actual.callJobs) {
+    if (job.type !== 'call' || job.method !== SEQUENCE_METHOD) continue
+    const scheduleIds = extractSequenceScheduleIds(job)
+    const steps = scheduleIds.map(id => {
+      const step = stepByScheduleId.get(id)
+      if (step === undefined) {
+        warnings.push(`sequence "${job.name}": step references schedule id ${id} whose job/schedule name is unknown; exported as raw id`)
+        return { job: id, schedule: '?' }
+      }
+      return step
+    })
+    const trigger = triggerByJobId.get(job.id)
+    const spec: Record<string, unknown> = { name: job.name, steps }
+    if (trigger !== undefined) {
+      spec.cron = trigger.cron
+      if (trigger.enabled === false) spec.enabled = false
+      if (trigger.timezone !== undefined) spec.timezone = trigger.timezone
+    } else {
+      warnings.push(`sequence "${job.name}": has no trigger schedule; cron omitted (set one before apply)`)
+    }
+    sequences.push(spec)
+  }
+
   const doc: Record<string, unknown> = {}
   doc.remotes = remotes
   doc.backupJobs = backupJobs
+  if (metadataBackups.length > 0) doc.metadataBackups = metadataBackups
+  if (mirrorBackups.length > 0) doc.mirrorBackups = mirrorBackups
+  if (sequences.length > 0) doc.sequences = sequences
 
   const header =
     `# Xen Orchestra configuration exported by xo-apply on ${new Date().toISOString()}\n` +

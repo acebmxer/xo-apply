@@ -1,9 +1,10 @@
 # xo-apply
 
 **Configuration-as-code for [Xen Orchestra](https://xen-orchestra.com/).**
-Declare your backup remotes, backup jobs and schedules in a YAML file, keep it
-in git, and reconcile any XO instance to match it — the same model Terraform
-uses for cloud accounts.
+Declare your backup remotes, backup jobs, replication (DR/CR), metadata and
+mirror backups, schedules and sequences in a YAML file, keep it in git, and
+reconcile any XO instance to match it — the same model Terraform uses for cloud
+accounts.
 
 ```console
 $ xo-apply diff config.yaml
@@ -216,20 +217,58 @@ backupJobs:
     vms:
       tag: critical           # every VM tagged "critical" (smart mode)
     remotes: [nas-backups]
+    # srs: [<sr-uuid>]         # target SRs => DR (mode:full) / CR (mode:delta)
     schedules:
       - name: nightly
         cron: "0 2 * * *"
         retention: 14
+
+metadataBackups:              # pool metadata + XO's own configuration
+  - name: xo-config
+    xoMetadata: true
+    pools: [<pool-uuid>]
+    remotes: [nas-backups]
+    schedules:
+      - { name: daily, cron: "0 21 * * *", xoRetention: 7, poolRetention: 7 }
+
+mirrorBackups:               # copy one remote's backups onto others (e.g. S3)
+  - name: offsite-mirror
+    mode: full
+    sourceRemote: nas-backups
+    remotes: [offsite-s3]
+    schedules:
+      - { name: nightly, cron: "0 5 * * *", retention: 14 }
+
+sequences:                   # run backup schedules one after another
+  - name: nightly-then-metadata
+    steps:
+      - { job: nightly-critical, schedule: nightly }
+      - { job: xo-config, schedule: daily }
+    cron: "0 22 * * *"
 ```
+
+### Resource types
+
+| Section | XO feature |
+|---|---|
+| `remotes` | Backup repositories (NFS, SMB, S3, local) |
+| `backupJobs` | VM backup jobs; add `srs:` for Disaster Recovery (`full`) / Continuous Replication (`delta`) |
+| `metadataBackups` | Pool metadata and XO config backups |
+| `mirrorBackups` | Mirror an existing remote's backups to other remotes |
+| `sequences` | Run a list of schedules in order, on their own cron |
 
 ### Semantics
 
 - Resources are **matched by `name`** — rename a job in the file and xo-apply
   will plan a delete (with `--prune`) + create, not a rename.
-- A **section that is absent** from the file (`remotes:` or `backupJobs:`) is
-  unmanaged: xo-apply neither reports nor deletes that resource type. An
-  empty section (`backupJobs: []`) claims ownership: everything of that type is
-  reported as untracked and deleted with `--prune`.
+- A **section that is absent** from the file (e.g. `remotes:`, `backupJobs:`,
+  `metadataBackups:`, `mirrorBackups:`, `sequences:`) is unmanaged: xo-apply
+  neither reports nor deletes that resource type. An empty section
+  (`backupJobs: []`) claims ownership: everything of that type is reported as
+  untracked and deleted with `--prune`.
+- A **sequence step** references a job by name and one of that job's named
+  schedules (`{ job: ..., schedule: ... }`); the referenced job may be defined
+  in the same file or already exist in XO. Order is significant.
 - A job's **schedules are fully owned by the job entry**: removing a schedule
   from the file deletes it on apply (no `--prune` needed).
 - Job `settings` are applied on top of XO's: keys you don't list are left
@@ -263,11 +302,13 @@ No state file is kept: the running XO is always the source of "actual" state.
 
 ## Roadmap
 
+- [x] Metadata & mirror backup jobs
+- [x] Backup sequences
+- [x] Disaster Recovery / Continuous Replication (SR targets)
 - [ ] Users & groups
 - [ ] Servers (pool connections)
 - [ ] ACLs / RBAC (ACL v2 REST endpoints)
-- [ ] Metadata & mirror backup jobs
-- [ ] Backup job health checks / sequences
+- [ ] Backup job health checks (partial: pass-through via schedule `settings`)
 
 ## Development
 
