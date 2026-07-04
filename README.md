@@ -40,7 +40,8 @@ Install directly from GitHub with npm:
 npm install -g github:acebmxer/xo-apply
 ```
 
-npm clones the repo and builds it automatically. Verify with:
+The repo ships ready to run (the compiled `dist/` is committed), so no build
+tools are needed on your machine. Verify with:
 
 ```bash
 xo-apply --version
@@ -50,6 +51,17 @@ To upgrade later, re-run the same install command.
 
 > Publishing to the npm registry (`npm install -g xo-apply`) is planned; until
 > then the GitHub install above is the supported method.
+
+**If you get `EACCES: permission denied`**: your npm global directory is
+root-owned (the default on many Linux distros). Rather than using `sudo`,
+point npm at a directory you own (one-time setup):
+
+```bash
+npm config set prefix ~/.npm-global
+echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.zshrc   # or ~/.bashrc
+source ~/.zshrc
+npm install -g github:acebmxer/xo-apply
+```
 
 Requires Node.js ≥ 20 and a Xen Orchestra recent enough to expose the REST API
 (`/rest/v0` — any current XO from sources or XOA).
@@ -221,6 +233,12 @@ npm test          # unit tests (vitest)
 npm run build     # tsc → dist/
 npm run dev -- diff config.yaml
 ```
+
+Note: `dist/` is committed on purpose — it's what makes
+`npm install -g github:acebmxer/xo-apply` work without build tools on the
+user's machine (npm cannot reliably run build scripts for globally installed
+git packages). When you change anything in `src/`, run `npm run build` and
+commit the updated `dist/` together with the source change.
 
 ## License
 
