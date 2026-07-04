@@ -1,10 +1,12 @@
 # xo-apply
 
-**Configuration-as-code for [Xen Orchestra](https://xen-orchestra.com/).**
-Declare your backup remotes, backup jobs, replication (DR/CR), metadata and
-mirror backups, schedules and sequences in a YAML file, keep it in git, and
-reconcile any XO instance to match it — the same model Terraform uses for cloud
-accounts.
+**Migrate or rebuild [Xen Orchestra](https://xen-orchestra.com/) from code.**
+Declare your XO in a YAML file, keep it in git, and stand up any instance to
+match it — move to new hardware, rebuild after a loss, or keep instances
+identical, without clicking through the UI.
+
+Backups are implemented today (remotes, jobs, schedules, DR/CR, metadata,
+mirror, sequences).
 
 ```console
 $ xo-apply diff config.yaml
@@ -21,9 +23,10 @@ Plan: 2 to create, 1 to update, 0 untracked
 
 ## Why
 
-XO stores backup jobs, schedules and remotes only in its own database. There is
-no way to write them down in a reviewable file — rebuilding an XO means
-re-creating every backup job by hand in the UI. With xo-apply:
+XO keeps its entire configuration locked inside its own database. There's no way
+to write it down, so moving to a new XO — or rebuilding one — means re-creating
+everything by hand in the UI. xo-apply makes your XO a file you own: declare it
+once, and build or migrate an instance from that file. With xo-apply:
 
 - **Rebuild in seconds**: reinstall XO (e.g. with
   [install_xen_orchestra](https://github.com/acebmxer/install_xen_orchestra)),

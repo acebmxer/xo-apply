@@ -1,7 +1,7 @@
 {
   "name": "xo-apply",
   "version": "0.1.0",
-  "description": "Configuration-as-code for Xen Orchestra: declare backup remotes, jobs and schedules in YAML and reconcile a running XO to match (GitOps-style)",
+  "description": "Migrate or rebuild a Xen Orchestra from code: declare your XO in YAML and stand up any instance to match it (GitOps-style). Backups implemented today, more of XO to follow.",
   "keywords": [
     "xen-orchestra",
     "xcp-ng",
