@@ -56,7 +56,9 @@ Requires Node.js ≥ 20 and a Xen Orchestra recent enough to expose the REST API
 
 ## Connect to your XO
 
-xo-apply needs your XO URL and an authentication token:
+**xo-apply can run anywhere** — your workstation, a management VM, the XO host
+itself. It talks to XO over the network, so one install can work against any
+number of XO instances just by changing which URL/token you point it at:
 
 ```bash
 export XO_URL=https://xo.example.lan
@@ -65,13 +67,18 @@ export XO_TOKEN=...
 
 (or pass `--url` / `--token`; add `--insecure` for self-signed certificates).
 
-Create a token either with `xo-cli create-token xo.example.lan admin@example.com`
+**Each XO instance needs its own token** — tokens are per-instance, so working
+with two XOs (e.g. an old and a new one) means creating a token on each.
+Create one either with `xo-cli create-token xo.example.lan admin@example.com`
 or directly through the REST API:
 
 ```bash
 curl -X POST -u 'admin@example.com:password' \
   https://xo.example.lan/rest/v0/users/me/authentication_tokens
 ```
+
+On a fresh XO installed from sources, the default login is `admin@admin.net` /
+`admin` until you change it.
 
 The token must belong to an **admin** user (backup management requires it).
 
@@ -91,6 +98,50 @@ xo-apply export -o config.yaml   # write down what you have
 git init && git add config.yaml  # keep it in your own PRIVATE repo
 xo-apply diff config.yaml        # → "In sync"
 ```
+
+## Walkthrough: rebuild or migrate an XO
+
+The main use case, step by step. You have an existing ("old") XO with backup
+jobs you care about, and a freshly installed ("new") XO — e.g. a new VM built
+with [install_xen_orchestra](https://github.com/acebmxer/install_xen_orchestra).
+
+**1. Export the config from the old XO** (any machine with xo-apply installed):
+
+```bash
+# --- export from OLD XO ---
+export XO_URL=https://old-xo.lan XO_TOKEN=<token-from-old-xo>
+xo-apply export -o config.yaml          # add --insecure if self-signed cert
+```
+
+Review `config.yaml` in a text editor — it's meant to be read. Edit anything
+you want changed on the new XO (retention, paths, jobs you no longer want).
+
+**2. Prepare the new XO** — two things xo-apply can't do for you (yet):
+
+- **Connect your pool(s)** in the new XO's UI (Settings → Servers). Backup
+  jobs that select VMs by `names`/`uuids` need the new XO to see those VMs;
+  managing pool connections from the file is on the roadmap.
+- **Set any secret environment variables.** If your remotes use SMB or S3,
+  the export replaced their passwords with `${env:...}` placeholders and
+  printed a warning naming each variable. Set those in your shell now —
+  `apply` will stop with a clear error if any are missing.
+
+**3. Apply to the new XO** — same tool, new URL and token:
+
+```bash
+# --- apply to NEW XO ---
+export XO_URL=https://new-xo.lan XO_TOKEN=<token-from-new-xo>
+xo-apply diff config.yaml               # review the plan first
+xo-apply apply config.yaml
+```
+
+`diff` shows exactly what will be created before you touch anything. After the
+apply, run `xo-apply diff config.yaml` again — it should print **"In sync"**.
+Your remotes, backup jobs and schedules are back without clicking through the
+UI.
+
+The same flow keeps two XOs identical (staging/production), and if the file
+lives in git, step 1 is already done — skip straight to the new server.
 
 ## The config file
 
