@@ -29,6 +29,7 @@ function scheduleCreateBody(desired: DesiredSchedule): Record<string, unknown> {
 
 function retentionSettings(desired: DesiredSchedule): Record<string, unknown> {
   return {
+    ...desired.settings,
     ...(desired.retention !== undefined ? { exportRetention: desired.retention } : {}),
     ...(desired.snapshotRetention !== undefined ? { snapshotRetention: desired.snapshotRetention } : {}),
   }

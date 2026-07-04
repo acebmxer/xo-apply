@@ -79,6 +79,9 @@ export const scheduleSpecSchema = z
     retention: z.number().int().min(0).optional(),
     // number of snapshots kept on the pool (XO: snapshotRetention)
     snapshotRetention: z.number().int().min(0).optional(),
+    // any other per-schedule XO settings, passed through verbatim
+    // (e.g. fullInterval for "force full backup", health check options)
+    settings: z.record(z.unknown()).default({}),
   })
   .strict()
 export type ScheduleSpec = z.infer<typeof scheduleSpecSchema>

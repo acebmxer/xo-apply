@@ -19,6 +19,7 @@ function scheduleCreateBody(desired) {
 }
 function retentionSettings(desired) {
     return {
+        ...desired.settings,
         ...(desired.retention !== undefined ? { exportRetention: desired.retention } : {}),
         ...(desired.snapshotRetention !== undefined ? { snapshotRetention: desired.snapshotRetention } : {}),
     };

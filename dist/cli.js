@@ -77,9 +77,11 @@ program
                 console.error(pc.green(`exported to ${cmdOptions.output}`));
             }
             else {
-                process.stdout.write(yaml);
+                await new Promise(resolve => process.stdout.write(yaml, () => resolve()));
             }
         });
+        // the JSON-RPC websocket can keep the event loop alive after close()
+        process.exit(0);
     }
     catch (error) {
         fail(error);
@@ -143,6 +145,8 @@ program
             });
             console.log(pc.green('\nApply complete.'));
         });
+        // the JSON-RPC websocket can keep the event loop alive after close()
+        process.exit(typeof process.exitCode === 'number' ? process.exitCode : 0);
     }
     catch (error) {
         fail(error);

@@ -53,6 +53,7 @@ function scheduleSpecToDesired(spec) {
         timezone: spec.timezone,
         retention: spec.retention,
         snapshotRetention: spec.snapshotRetention,
+        settings: spec.settings,
     };
 }
 /** Actual remote ids → names for comparison; unknown ids stay as ids. */
@@ -135,6 +136,11 @@ export function diffJob(desired, actual, mapping) {
         if (d.snapshotRetention !== undefined &&
             !deepEqual(d.snapshotRetention, schedSettings.snapshotRetention ?? 0)) {
             schedChanges.push({ field: 'snapshotRetention', from: schedSettings.snapshotRetention ?? 0, to: d.snapshotRetention });
+        }
+        for (const [key, value] of Object.entries(d.settings)) {
+            if (!deepEqual(value, schedSettings[key])) {
+                schedChanges.push({ field: `settings.${key}`, from: schedSettings[key], to: value });
+            }
         }
         if (schedChanges.length > 0) {
             scheduleChanges.push({ kind: 'update', desired: d, actual: a, changes: schedChanges });

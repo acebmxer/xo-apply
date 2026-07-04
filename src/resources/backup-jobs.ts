@@ -10,6 +10,8 @@ export interface DesiredSchedule {
   timezone?: string
   retention?: number
   snapshotRetention?: number
+  /** extra per-schedule XO settings, passed through verbatim */
+  settings: Record<string, unknown>
 }
 
 export interface DesiredJob {
@@ -83,6 +85,7 @@ function scheduleSpecToDesired(spec: ScheduleSpec): DesiredSchedule {
     timezone: spec.timezone,
     retention: spec.retention,
     snapshotRetention: spec.snapshotRetention,
+    settings: spec.settings,
   }
 }
 
@@ -205,6 +208,11 @@ export function diffJob(desired: DesiredJob, actual: ActualJob, mapping: RemoteM
       !deepEqual(d.snapshotRetention, schedSettings.snapshotRetention ?? 0)
     ) {
       schedChanges.push({ field: 'snapshotRetention', from: schedSettings.snapshotRetention ?? 0, to: d.snapshotRetention })
+    }
+    for (const [key, value] of Object.entries(d.settings)) {
+      if (!deepEqual(value, schedSettings[key])) {
+        schedChanges.push({ field: `settings.${key}`, from: schedSettings[key], to: value })
+      }
     }
     if (schedChanges.length > 0) {
       scheduleChanges.push({ kind: 'update', desired: d, actual: a, changes: schedChanges })

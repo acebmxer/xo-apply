@@ -108,6 +108,11 @@ export function exportSpec(actual) {
             if (typeof schedSettings.snapshotRetention === 'number' && schedSettings.snapshotRetention > 0) {
                 schedSpec.snapshotRetention = schedSettings.snapshotRetention;
             }
+            // preserve any other per-schedule settings (fullInterval, health checks…)
+            const extra = Object.fromEntries(Object.entries(schedSettings).filter(([key]) => key !== 'exportRetention' && key !== 'snapshotRetention'));
+            if (Object.keys(extra).length > 0) {
+                schedSpec.settings = extra;
+            }
             return schedSpec;
         });
         backupJobs.push(spec);

@@ -128,6 +128,27 @@ describe('diffJob', () => {
     expect(kinds).toEqual(['create', 'delete'])
   })
 
+  it('passes through and diffs extra per-schedule settings (e.g. force full)', () => {
+    // actual XO schedule has fullInterval: 1 that the file also declares → in sync
+    const withForceFull = {
+      ...nightlySpec,
+      schedules: [{ name: 'nightly', cron: '0 2 * * *', retention: 14, settings: { fullInterval: 1 } }],
+    }
+    const actual = actualJobFixture()
+    actual.job.settings['sched-1'] = { exportRetention: 14, fullInterval: 1 }
+    expect(diffJob(jobSpecToDesired(parseJob(withForceFull), vmIndex), actual, mapping).scheduleChanges).toEqual([])
+
+    // file changes fullInterval → exactly one schedule update
+    const changed = {
+      ...nightlySpec,
+      schedules: [{ name: 'nightly', cron: '0 2 * * *', retention: 14, settings: { fullInterval: 4 } }],
+    }
+    const diff = diffJob(jobSpecToDesired(parseJob(changed), vmIndex), actual, mapping)
+    expect(diff.scheduleChanges).toHaveLength(1)
+    const sc = diff.scheduleChanges[0]
+    expect(sc.kind === 'update' && sc.changes).toEqual([{ field: 'settings.fullInterval', from: 1, to: 4 }])
+  })
+
   it('treats pattern order as irrelevant', () => {
     const desired = jobSpecToDesired(
       parseJob({ ...nightlySpec, vms: { tags: ['b', 'a'] }, schedules: [] }),
@@ -145,7 +166,7 @@ describe('diffJob', () => {
 describe('matchSchedules', () => {
   it('falls back to cron matching for unnamed schedules', () => {
     const { pairs, unmatchedDesired, unmatchedActual } = matchSchedules(
-      [{ name: 'nightly', cron: '0 2 * * *', enabled: true }],
+      [{ name: 'nightly', cron: '0 2 * * *', enabled: true, settings: {} }],
       [{ id: 's1', jobId: 'j', cron: '0 2 * * *' }]
     )
     expect(pairs).toHaveLength(1)
