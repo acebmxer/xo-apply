@@ -1,7 +1,7 @@
-# dist/ is committed on purpose: it lets `npm install -g github:acebmxer/xo-apply`
-# work without a build step on the user's machine (global npm installs of git
-# packages cannot reliably run prepare scripts). Run `npm run build` and commit
-# dist/ together with src/ changes.
+# dist/ is committed on purpose: it lets users npm-install straight from a
+# GitHub tarball without a build step (npm cannot reliably build globally
+# installed git/tarball packages). Run `npm run build` and commit dist/
+# together with src/ changes.
 node_modules/
 *.log
 .env

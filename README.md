@@ -37,17 +37,23 @@ re-creating every backup job by hand in the UI. With xo-apply:
 Install directly from GitHub with npm:
 
 ```bash
-npm install -g github:acebmxer/xo-apply
+npm install -g https://github.com/acebmxer/xo-apply/archive/refs/heads/main.tar.gz
 ```
 
 The repo ships ready to run (the compiled `dist/` is committed), so no build
 tools are needed on your machine. Verify with:
 
 ```bash
-xo-apply --version
+xo-apply --version    # zsh users: run `rehash` first (or open a new terminal)
 ```
 
 To upgrade later, re-run the same install command.
+
+> Why the tarball URL instead of `npm install -g github:acebmxer/xo-apply`?
+> Several npm versions in the wild (including current Fedora packages) have
+> bugs that break **global** installs of git-based packages — they either fail
+> to build them or install a symlink to a temp directory that npm deletes.
+> The tarball URL avoids npm's git handling entirely and works everywhere.
 
 > Publishing to the npm registry (`npm install -g xo-apply`) is planned; until
 > then the GitHub install above is the supported method.
@@ -60,7 +66,7 @@ point npm at a directory you own (one-time setup):
 npm config set prefix ~/.npm-global
 echo 'export PATH=$HOME/.npm-global/bin:$PATH' >> ~/.zshrc   # or ~/.bashrc
 source ~/.zshrc
-npm install -g github:acebmxer/xo-apply
+npm install -g https://github.com/acebmxer/xo-apply/archive/refs/heads/main.tar.gz
 ```
 
 Requires Node.js ≥ 20 and a Xen Orchestra recent enough to expose the REST API
@@ -234,11 +240,11 @@ npm run build     # tsc → dist/
 npm run dev -- diff config.yaml
 ```
 
-Note: `dist/` is committed on purpose — it's what makes
-`npm install -g github:acebmxer/xo-apply` work without build tools on the
-user's machine (npm cannot reliably run build scripts for globally installed
-git packages). When you change anything in `src/`, run `npm run build` and
-commit the updated `dist/` together with the source change.
+Note: `dist/` is committed on purpose — it's what lets users install straight
+from a GitHub tarball without build tools on their machine (npm cannot
+reliably build globally installed git/tarball packages). When you change
+anything in `src/`, run `npm run build` and commit the updated `dist/`
+together with the source change.
 
 ## License
 
