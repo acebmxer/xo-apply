@@ -98,6 +98,35 @@ export class XoClient {
     listVms() {
         return this.#rest.get('/vms', { fields: 'id,name_label,tags' });
     }
+    // -- users (local auth) ----------------------------------------------------
+    listUsers() {
+        return this.#rest.get('/users', { fields: 'id,email,permission,groups,authProviders' });
+    }
+    /** user.create returns the new user's id as a plain string. */
+    createUser(params) {
+        return this.#rpc.call('user.create', params);
+    }
+    async setUser(params) {
+        await this.#rpc.call('user.set', params);
+    }
+    async deleteUser(id) {
+        await this.#rpc.call('user.delete', { id });
+    }
+    // -- groups ----------------------------------------------------------------
+    listGroups() {
+        return this.#rest.get('/groups', { fields: 'id,name,users,provider,providerGroupId' });
+    }
+    /** group.create returns the new group object (with its id). */
+    createGroup(params) {
+        return this.#rpc.call('group.create', params);
+    }
+    /** Set a group's members to exactly this list of user ids. */
+    async setGroupUsers(id, userIds) {
+        await this.#rpc.call('group.setUsers', { id, userIds });
+    }
+    async deleteGroup(id) {
+        await this.#rpc.call('group.delete', { id });
+    }
     close() {
         this.#rpc.close();
     }

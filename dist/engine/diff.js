@@ -164,19 +164,63 @@ export function renderPlan(plan, { prune = false } = {}) {
         }
         lines.push('');
     }
+    // Users / groups — like remotes, they carry per-field `changes` directly.
+    const renderChangeItems = (title, managed, items, untracked, label, detail, trailer) => {
+        if (!managed)
+            return;
+        lines.push(pc.bold(title + ':'));
+        for (const it of items) {
+            if (it.kind === 'create') {
+                creates++;
+                lines.push(pc.green(`  + create  ${label(it.desired)}`) + pc.dim(`  (${detail(it.desired)})`));
+            }
+            else if (it.kind === 'update') {
+                updates++;
+                lines.push(pc.yellow(`  ~ update  ${label(it.desired)}`));
+                for (const c of it.changes) {
+                    lines.push(pc.yellow(`      ${c.field}: `) + pc.dim(`${fmtValue(c.from)} → ${fmtValue(c.to)}`));
+                }
+            }
+            else {
+                lines.push(pc.dim(`  = ok      ${label(it.desired)}`));
+            }
+        }
+        for (const u of untracked) {
+            const name = u.name ?? u.email ?? '';
+            if (prune) {
+                deletes++;
+                lines.push(pc.red(`  - delete  ${name}`));
+            }
+            else {
+                lines.push(pc.magenta(`  ! untracked  ${name}`) + pc.dim('  (not in file; use --prune to delete)'));
+            }
+        }
+        if (items.length === 0 && untracked.length === 0) {
+            lines.push(pc.dim('  (none)'));
+        }
+        if (trailer)
+            lines.push(pc.dim('  ' + trailer));
+        lines.push('');
+    };
+    renderChangeItems('Users', plan.usersManaged, plan.users, plan.untrackedUsers, d => d.email, d => d.permission, plan.externalUserCount > 0 ? `${plan.externalUserCount} external user(s) unmanaged` : undefined);
+    renderChangeItems('Groups', plan.groupsManaged, plan.groups, plan.untrackedGroups, d => d.name, d => `${d.memberEmails.length} member${d.memberEmails.length === 1 ? '' : 's'}`, plan.externalGroupCount > 0 ? `${plan.externalGroupCount} external group(s) unmanaged` : undefined);
     if (!plan.remotesManaged &&
         !plan.jobsManaged &&
         !plan.metadataManaged &&
         !plan.mirrorManaged &&
-        !plan.sequencesManaged) {
-        lines.push(pc.dim('Nothing is managed by this file (no remotes/backupJobs/metadataBackups/mirrorBackups/sequences sections).'));
+        !plan.sequencesManaged &&
+        !plan.usersManaged &&
+        !plan.groupsManaged) {
+        lines.push(pc.dim('Nothing is managed by this file (no remotes/backupJobs/metadataBackups/mirrorBackups/sequences/users/groups sections).'));
         lines.push('');
     }
     const untracked = plan.untrackedRemotes.length +
         plan.untrackedJobs.length +
         plan.untrackedMetadataJobs.length +
         plan.untrackedMirrorJobs.length +
-        plan.untrackedSequences.length;
+        plan.untrackedSequences.length +
+        plan.untrackedUsers.length +
+        plan.untrackedGroups.length;
     const summaryParts = [
         pc.green(`${creates} to create`),
         pc.yellow(`${updates} to update`),

@@ -190,6 +190,31 @@ export const sequenceSpecSchema = z
 })
     .strict();
 // ---------------------------------------------------------------------------
+// Users & groups (local auth provider only)
+// ---------------------------------------------------------------------------
+// XO's global role. 'none' means the user has no permissions beyond what ACLs
+// grant; 'admin' is a full administrator.
+export const userPermissionSchema = z.enum(['none', 'read', 'write', 'admin']);
+export const userSpecSchema = z
+    .object({
+    // the login / identity of the user (XO calls this "email")
+    email: z.string().min(1),
+    // local-auth password. Use a ${env:...} reference — it is resolved before
+    // validation (see config/load.ts). XO never returns passwords, so this is
+    // only ever written, never compared. Omit to leave an existing password
+    // untouched on update (a new user then has no usable password).
+    password: z.string().min(1).optional(),
+    permission: userPermissionSchema.optional(),
+})
+    .strict();
+export const groupSpecSchema = z
+    .object({
+    name: z.string().min(1),
+    // member users, referenced by email; resolved to ids at apply time
+    users: z.array(z.string().min(1)).default([]),
+})
+    .strict();
+// ---------------------------------------------------------------------------
 // Top-level spec
 // ---------------------------------------------------------------------------
 // A section that is absent from the file is UNMANAGED: xo-apply ignores that
@@ -202,6 +227,8 @@ export const specSchema = z
     metadataBackups: z.array(metadataBackupSpecSchema).optional(),
     mirrorBackups: z.array(mirrorBackupSpecSchema).optional(),
     sequences: z.array(sequenceSpecSchema).optional(),
+    users: z.array(userSpecSchema).optional(),
+    groups: z.array(groupSpecSchema).optional(),
 })
     .strict();
 export function validateSpec(data) {
@@ -232,6 +259,20 @@ export function validateSpec(data) {
     const seqDupes = dupes((spec.sequences ?? []).map(s => s.name));
     if (seqDupes.length > 0) {
         throw new Error(`duplicate sequence name(s): ${[...new Set(seqDupes)].join(', ')}`);
+    }
+    const userDupes = dupes((spec.users ?? []).map(u => u.email));
+    if (userDupes.length > 0) {
+        throw new Error(`duplicate user email(s): ${[...new Set(userDupes)].join(', ')}`);
+    }
+    const groupDupes = dupes((spec.groups ?? []).map(g => g.name));
+    if (groupDupes.length > 0) {
+        throw new Error(`duplicate group name(s): ${[...new Set(groupDupes)].join(', ')}`);
+    }
+    for (const group of spec.groups ?? []) {
+        const memberDupes = dupes(group.users);
+        if (memberDupes.length > 0) {
+            throw new Error(`group "${group.name}": duplicate member(s): ${[...new Set(memberDupes)].join(', ')}`);
+        }
     }
     return spec;
 }

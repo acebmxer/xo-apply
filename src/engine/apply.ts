@@ -16,7 +16,7 @@ import {
 } from './plan.js'
 
 export async function fetchActualState(client: XoClient): Promise<ActualState> {
-  const [remotes, jobs, metadataJobs, mirrorJobs, callJobs, schedules, vms] = await Promise.all([
+  const [remotes, jobs, metadataJobs, mirrorJobs, callJobs, schedules, vms, users, groups] = await Promise.all([
     client.listRemotes(),
     client.listBackupJobs(),
     client.listMetadataBackupJobs(),
@@ -24,8 +24,10 @@ export async function fetchActualState(client: XoClient): Promise<ActualState> {
     client.listCallJobs(),
     client.listSchedules(),
     client.listVms(),
+    client.listUsers(),
+    client.listGroups(),
   ])
-  return { remotes, jobs, metadataJobs, mirrorJobs, callJobs, schedules, vms }
+  return { remotes, jobs, metadataJobs, mirrorJobs, callJobs, schedules, vms, users, groups }
 }
 
 export interface ApplyOptions {
@@ -163,9 +165,86 @@ export async function applyPlan(client: XoClient, plan: Plan, options: ApplyOpti
     }
   }
 
-  // -- 6. prune (children before their remotes) -----------------------------
+  // -- 6. users (before groups, which reference them) -----------------------
+
+  // email → real XO user id, seeded from actuals + untracked and grown as we
+  // create users, so groups created this run can resolve their members.
+  const userIdByEmail = new Map<string, string>()
+  for (const userPlan of plan.users) {
+    if (userPlan.actual !== undefined) {
+      userIdByEmail.set(userPlan.actual.email, userPlan.actual.id)
+    }
+  }
+  for (const user of plan.untrackedUsers) {
+    userIdByEmail.set(user.email, user.id)
+  }
+
+  for (const userPlan of plan.users) {
+    const { desired } = userPlan
+    if (userPlan.kind === 'create') {
+      // XO's user.create requires a password; a hand-written file may omit it.
+      if (desired.password === undefined) {
+        throw new Error(
+          `user "${desired.email}": cannot create without a password — add a \`password:\` (or \`password: \${env:...}\`) line and re-apply`
+        )
+      }
+      const id = await client.createUser({
+        email: desired.email,
+        password: desired.password,
+        permission: desired.permission,
+      })
+      userIdByEmail.set(desired.email, id)
+      log(`created user ${desired.email}`)
+    } else if (userPlan.kind === 'update' && userPlan.actual !== undefined) {
+      // Only permission is reconciled on update. The password is deliberately
+      // NOT touched for an existing user: the file's password (often the
+      // exported `ChangeMe` placeholder) would otherwise clobber whatever the
+      // user has since set. Change an existing user's password in XO directly.
+      const body: { id: string; permission?: string } = { id: userPlan.actual.id }
+      if (userPlan.changes.some(c => c.field === 'permission')) {
+        body.permission = desired.permission
+      }
+      await client.setUser(body)
+      log(`updated user ${desired.email}`)
+    }
+  }
+
+  const resolveUserIds = (groupName: string, emails: string[]): string[] =>
+    emails.map(email => {
+      const id = userIdByEmail.get(email)
+      if (id === undefined) {
+        throw new Error(`group "${groupName}": user "${email}" not found in XO after apply`)
+      }
+      return id
+    })
+
+  // -- 7. groups ------------------------------------------------------------
+
+  for (const groupPlan of plan.groups) {
+    const { desired } = groupPlan
+    if (groupPlan.kind === 'create') {
+      const created = await client.createGroup({ name: desired.name })
+      await client.setGroupUsers(created.id, resolveUserIds(desired.name, desired.memberEmails))
+      log(`created group ${desired.name}`)
+    } else if (groupPlan.kind === 'update' && groupPlan.actual !== undefined) {
+      await client.setGroupUsers(groupPlan.actual.id, resolveUserIds(desired.name, desired.memberEmails))
+      log(`updated group ${desired.name}`)
+    }
+  }
+
+  // -- 8. prune (children before their remotes) -----------------------------
 
   if (prune) {
+    // groups before users (reverse of create order); external users/groups are
+    // never in the untracked lists, so they can never be pruned here.
+    for (const group of plan.untrackedGroups) {
+      await client.deleteGroup(group.id)
+      log(`deleted group ${group.name}`)
+    }
+    for (const user of plan.untrackedUsers) {
+      await client.deleteUser(user.id)
+      log(`deleted user ${user.email}`)
+    }
     for (const seq of plan.untrackedSequences) {
       await client.deleteCallJob(seq.id)
       log(`deleted sequence ${seq.name}`)

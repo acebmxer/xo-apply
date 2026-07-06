@@ -80,6 +80,31 @@ export interface XoVm {
   tags?: string[]
 }
 
+export interface XoUser {
+  id: string
+  /** the login / identity of the user */
+  email: string
+  permission?: 'none' | 'read' | 'write' | 'admin'
+  /** group ids this user belongs to */
+  groups?: string[]
+  /**
+   * Present (and non-empty) only for users provisioned by an external auth
+   * plugin (LDAP/SAML/GitHub…). Local users have no external provider entry.
+   * XO returns this as an object keyed by provider id.
+   */
+  authProviders?: Record<string, unknown>
+}
+
+export interface XoGroup {
+  id: string
+  name: string
+  /** member user ids */
+  users?: string[]
+  /** set for groups synchronized from an external auth provider */
+  provider?: string
+  providerGroupId?: string
+}
+
 export interface XoClientOptions {
   url: string
   token: string
@@ -231,6 +256,45 @@ export class XoClient {
 
   listVms(): Promise<XoVm[]> {
     return this.#rest.get('/vms', { fields: 'id,name_label,tags' })
+  }
+
+  // -- users (local auth) ----------------------------------------------------
+
+  listUsers(): Promise<XoUser[]> {
+    return this.#rest.get('/users', { fields: 'id,email,permission,groups,authProviders' })
+  }
+
+  /** user.create returns the new user's id as a plain string. */
+  createUser(params: { email: string; password?: string; permission?: string }): Promise<string> {
+    return this.#rpc.call('user.create', params)
+  }
+
+  async setUser(params: { id: string; email?: string; password?: string; permission?: string }): Promise<void> {
+    await this.#rpc.call('user.set', params)
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await this.#rpc.call('user.delete', { id })
+  }
+
+  // -- groups ----------------------------------------------------------------
+
+  listGroups(): Promise<XoGroup[]> {
+    return this.#rest.get('/groups', { fields: 'id,name,users,provider,providerGroupId' })
+  }
+
+  /** group.create returns the new group object (with its id). */
+  createGroup(params: { name: string }): Promise<XoGroup> {
+    return this.#rpc.call('group.create', params)
+  }
+
+  /** Set a group's members to exactly this list of user ids. */
+  async setGroupUsers(id: string, userIds: string[]): Promise<void> {
+    await this.#rpc.call('group.setUsers', { id, userIds })
+  }
+
+  async deleteGroup(id: string): Promise<void> {
+    await this.#rpc.call('group.delete', { id })
   }
 
   close(): void {

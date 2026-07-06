@@ -2,6 +2,8 @@ import { stringify } from 'yaml';
 import { extractIds, extractTags } from '../resources/patterns.js';
 import { remoteToSpec } from '../resources/remotes.js';
 import { extractSequenceScheduleIds, SEQUENCE_METHOD } from '../resources/sequences.js';
+import { EXPORT_PASSWORD_PLACEHOLDER, isLocalUser, userToSpec } from '../resources/users.js';
+import { groupToSpec, isLocalGroup } from '../resources/groups.js';
 /** Convert live XO state into a v1 spec document. */
 export function exportSpec(actual) {
     const warnings = [];
@@ -242,6 +244,37 @@ export function exportSpec(actual) {
         }
         sequences.push(spec);
     }
+    // -- users & groups (local only) ------------------------------------------
+    const users = [];
+    let skippedExternalUsers = 0;
+    for (const user of actual.users) {
+        if (!isLocalUser(user)) {
+            skippedExternalUsers++;
+            continue;
+        }
+        const { spec } = userToSpec(user);
+        users.push(spec);
+    }
+    if (users.length > 0) {
+        warnings.push(`${users.length} local user(s) exported with the placeholder password "${EXPORT_PASSWORD_PLACEHOLDER}" ` +
+            `(XO does not return real passwords) — change these in the file before importing into a real XO`);
+    }
+    if (skippedExternalUsers > 0) {
+        warnings.push(`skipped ${skippedExternalUsers} externally-provisioned user(s) (managed by their auth plugin)`);
+    }
+    const userEmailById = new Map(actual.users.map(u => [u.id, u.email]));
+    const groups = [];
+    let skippedExternalGroups = 0;
+    for (const group of actual.groups) {
+        if (!isLocalGroup(group)) {
+            skippedExternalGroups++;
+            continue;
+        }
+        groups.push(groupToSpec(group, userEmailById));
+    }
+    if (skippedExternalGroups > 0) {
+        warnings.push(`skipped ${skippedExternalGroups} externally-synchronized group(s) (managed by their auth plugin)`);
+    }
     const doc = {};
     doc.remotes = remotes;
     doc.backupJobs = backupJobs;
@@ -251,6 +284,10 @@ export function exportSpec(actual) {
         doc.mirrorBackups = mirrorBackups;
     if (sequences.length > 0)
         doc.sequences = sequences;
+    if (users.length > 0)
+        doc.users = users;
+    if (groups.length > 0)
+        doc.groups = groups;
     const header = `# Xen Orchestra configuration exported by xo-apply on ${new Date().toISOString()}\n` +
         `# Secrets are NOT exported: \${env:...} placeholders must be provided as environment variables.\n`;
     return { yaml: header + stringify(doc), warnings };

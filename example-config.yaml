@@ -132,3 +132,24 @@ sequences:
     cron: "0 22 * * *"
     # enabled: false     # sequences are enabled by default
     # timezone: America/New_York
+
+# Local users (XO's internal auth provider). Users created by an external auth
+# plugin (LDAP/SAML/GitHub) are NOT managed here and are never pruned.
+#
+# Passwords are write-only: XO never returns them, so a real password can't be
+# exported or diffed — but XO REQUIRES a password to create a user. So `export`
+# writes the placeholder `password: ChangeMe` for every user.
+#   ⚠️  CHANGE these before importing into a real XO (or use a ${env:...} ref),
+#       otherwise every new user is created with the password "ChangeMe".
+# The password is only used when a user is CREATED; for an existing user it is
+# ignored (change it in the XO UI). Only `permission` is compared for drift.
+users:
+  - email: ops@example.com
+    password: ChangeMe      # required by XO; change before import
+    permission: admin       # none | read | write | admin (default: none)
+
+# Local groups. Members are referenced by email and resolved to ids at apply
+# time; each member must be a user defined above or already present in XO.
+groups:
+  - name: operators
+    users: [ops@example.com]

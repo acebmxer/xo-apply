@@ -248,6 +248,15 @@ sequences:                   # run backup schedules one after another
       - { job: nightly-critical, schedule: nightly }
       - { job: xo-config, schedule: daily }
     cron: "0 22 * * *"
+
+users:                       # local XO users (auth via XO's internal provider)
+  - email: ops@example.com
+    password: ChangeMe        # required by XO; change before import (or use ${env:...})
+    permission: admin        # none | read | write | admin
+
+groups:                      # local groups; members referenced by email
+  - name: operators
+    users: [ops@example.com]
 ```
 
 ### Resource types
@@ -259,6 +268,8 @@ sequences:                   # run backup schedules one after another
 | `metadataBackups` | Pool metadata and XO config backups |
 | `mirrorBackups` | Mirror an existing remote's backups to other remotes |
 | `sequences` | Run a list of schedules in order, on their own cron |
+| `users` | Local XO users (internal auth provider only) |
+| `groups` | Local groups and their membership |
 
 ### Semantics
 
@@ -279,6 +290,22 @@ sequences:                   # run backup schedules one after another
 - VM selection: `tag`/`tags` (smart mode — VMs added later with the tag are
   picked up automatically), `names` or `uuids` (explicit list), or `raw`
   (a verbatim XO smart-mode pattern for anything more complex).
+- **Users & groups are local-only.** Users provisioned by an external auth
+  plugin (LDAP/SAML/GitHub) are never touched — not reported as untracked and
+  never pruned (`--prune` can't delete an SSO account). Groups are matched by
+  `name`, users by `email`; group members are referenced by email and resolved
+  to ids at apply time.
+- **User passwords are write-only.** XO never returns a password, so xo-apply
+  can't read the real value or detect password drift — but XO's `user.create`
+  *requires* a password. So `export` writes every local user with the literal
+  placeholder **`password: ChangeMe`**. **⚠️ Change these before importing into a
+  real XO** — otherwise every new user is created with the password `ChangeMe`.
+  (You can also replace it with a `${env:...}` reference to keep the real value
+  out of the file.) On `apply`, the password is **only used when a user is
+  created** — for an existing user the password in the file is ignored, so a
+  re-applied export never resets someone's password back to `ChangeMe`. Change
+  an existing user's password in the XO UI. Only `permission` and group
+  membership are diffed.
 
 ### Secrets
 
@@ -308,7 +335,7 @@ No state file is kept: the running XO is always the source of "actual" state.
 - [x] Metadata & mirror backup jobs
 - [x] Backup sequences
 - [x] Disaster Recovery / Continuous Replication (SR targets)
-- [ ] Users & groups
+- [x] Users & groups (local auth provider)
 - [ ] Servers (pool connections)
 - [ ] ACLs / RBAC (ACL v2 REST endpoints)
 - [ ] Backup job health checks (partial: pass-through via schedule `settings`)
