@@ -6,3 +6,6 @@ node_modules/
 *.log
 .env
 .secrets
+
+# Local XO config may contain credentials; use example-config.yaml as a template
+xo-config.yaml
