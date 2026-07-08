@@ -4,6 +4,7 @@ import { remoteToSpec } from '../resources/remotes.js';
 import { extractSequenceScheduleIds, SEQUENCE_METHOD } from '../resources/sequences.js';
 import { EXPORT_PASSWORD_PLACEHOLDER, isLocalUser, userToSpec } from '../resources/users.js';
 import { groupToSpec, isLocalGroup } from '../resources/groups.js';
+import { serverToSpec } from '../resources/servers.js';
 /** Convert live XO state into a v1 spec document. */
 export function exportSpec(actual) {
     const warnings = [];
@@ -275,6 +276,13 @@ export function exportSpec(actual) {
     if (skippedExternalGroups > 0) {
         warnings.push(`skipped ${skippedExternalGroups} externally-synchronized group(s) (managed by their auth plugin)`);
     }
+    // -- servers (pool connections) -------------------------------------------
+    const servers = [];
+    for (const server of actual.servers) {
+        const { spec, secretEnvVar } = serverToSpec(server);
+        servers.push(spec);
+        warnings.push(`server "${server.host}": password replaced by \${env:${secretEnvVar}} — set that environment variable before running apply`);
+    }
     const doc = {};
     doc.remotes = remotes;
     doc.backupJobs = backupJobs;
@@ -288,6 +296,8 @@ export function exportSpec(actual) {
         doc.users = users;
     if (groups.length > 0)
         doc.groups = groups;
+    if (servers.length > 0)
+        doc.servers = servers;
     const header = `# Xen Orchestra configuration exported by xo-apply on ${new Date().toISOString()}\n` +
         `# Secrets are NOT exported: \${env:...} placeholders must be provided as environment variables.\n`;
     return { yaml: header + stringify(doc), warnings };

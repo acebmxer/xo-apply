@@ -1,6 +1,15 @@
 import { JsonRpcClient } from './jsonrpc.js';
 import { RestClient } from './rest.js';
 /**
+ * XO rejects server.enable/disable with an "incorrect state" error when the
+ * pool is already in (or moving toward) the requested connection state — e.g.
+ * a version that auto-connects on server.add leaves it "connecting", not
+ * "disconnected". That is not a real failure for us, so callers can ignore it.
+ */
+function isIncorrectStateError(error) {
+    return error instanceof Error && /incorrect state/i.test(error.message);
+}
+/**
  * Facade over XO's two APIs. Callers never know which API serves a request:
  * - REST /rest/v0 wherever it supports the operation (remotes CRU, VM listing)
  * - JSON-RPC (xo-lib) where REST is still read-only (backup jobs, schedules)
@@ -126,6 +135,47 @@ export class XoClient {
     }
     async deleteGroup(id) {
         await this.#rpc.call('group.delete', { id });
+    }
+    // -- servers (pool connections) --------------------------------------------
+    listServers() {
+        return this.#rest.get('/servers', {
+            fields: 'id,host,username,label,allowUnauthorized,enabled,readOnly,status,poolId',
+        });
+    }
+    /** server.add returns the new server's id as a plain string. */
+    createServer(params) {
+        return this.#rpc.call('server.add', params);
+    }
+    /** Password is deliberately omitted here — updates never clobber it. */
+    async setServer(params) {
+        await this.#rpc.call('server.set', params);
+    }
+    /**
+     * Connect the pool. Idempotent: some XO versions auto-connect on `server.add`,
+     * so the server may already be connecting/connected — XO then rejects enable
+     * with an "incorrect state" error, which we treat as success.
+     */
+    async enableServer(id) {
+        try {
+            await this.#rpc.call('server.enable', { id });
+        }
+        catch (error) {
+            if (!isIncorrectStateError(error))
+                throw error;
+        }
+    }
+    /** Disconnect the pool. Idempotent (already-disconnected is not an error). */
+    async disableServer(id) {
+        try {
+            await this.#rpc.call('server.disable', { id });
+        }
+        catch (error) {
+            if (!isIncorrectStateError(error))
+                throw error;
+        }
+    }
+    async removeServer(id) {
+        await this.#rpc.call('server.remove', { id });
     }
     close() {
         this.#rpc.close();

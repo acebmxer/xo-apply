@@ -7,30 +7,75 @@ const ENV_REF = /\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g
 
 /**
  * Recursively resolve ${env:VAR} placeholders in string values.
- * Missing variables are collected and reported as one error so the user
- * can fix them all at once.
+ * Missing variables are collected in `missing` so the caller can react.
+ *
+ * `dropUnresolved` controls what happens to a string that still contains an
+ * unresolved reference after substitution:
+ *   - false (default): the literal `${env:VAR}` is left in place. The caller is
+ *     expected to treat a non-empty `missing` set as a hard error.
+ *   - true: the whole string is replaced with `undefined` (so the containing
+ *     object key is dropped). Used by read-only commands (diff/dry-run) that
+ *     never need the secret's value — a resolved-away password simply becomes
+ *     "no password", which is ignored by diff and fails safe on apply-create.
  */
-export function resolveEnvRefs(value: unknown, missing: Set<string>, env = process.env): unknown {
+export function resolveEnvRefs(
+  value: unknown,
+  missing: Set<string>,
+  env = process.env,
+  dropUnresolved = false
+): unknown {
   if (typeof value === 'string') {
-    return value.replace(ENV_REF, (match, name: string) => {
+    let sawMissing = false
+    const replaced = value.replace(ENV_REF, (match, name: string) => {
       const resolved = env[name]
       if (resolved === undefined) {
         missing.add(name)
+        sawMissing = true
         return match
       }
       return resolved
     })
+    if (sawMissing && dropUnresolved) return undefined
+    return replaced
   }
   if (Array.isArray(value)) {
-    return value.map(v => resolveEnvRefs(v, missing, env))
+    return value.map(v => resolveEnvRefs(v, missing, env, dropUnresolved))
   }
   if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolveEnvRefs(v, missing, env)]))
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([k, v]) => [k, resolveEnvRefs(v, missing, env, dropUnresolved)] as const)
+        // drop keys whose value resolved away to undefined
+        .filter(([, v]) => v !== undefined)
+    )
   }
   return value
 }
 
-export function loadSpec(filePath: string, env = process.env): Spec {
+export interface LoadOptions {
+  /**
+   * When true, unresolved ${env:...} references are dropped instead of failing
+   * the load. Used by read-only commands (diff/dry-run) that never need the
+   * secret's value. The names that could not be resolved are returned in
+   * `missingSecrets` so the caller can warn. Defaults to false (strict).
+   */
+  allowMissingSecrets?: boolean
+  env?: NodeJS.ProcessEnv
+}
+
+export interface LoadResult {
+  spec: Spec
+  /** ${env:...} variables that were referenced but not set (only when tolerated) */
+  missingSecrets: string[]
+}
+
+/**
+ * Load, resolve secrets in, and validate a config file. Throws on a missing
+ * secret unless `allowMissingSecrets` is set. Prefer `loadSpec` for the common
+ * "must resolve everything" case; use this when you need the missing set back.
+ */
+export function loadSpecResult(filePath: string, options: LoadOptions = {}): LoadResult {
+  const env = options.env ?? process.env
   let raw: string
   try {
     raw = readFileSync(filePath, 'utf8')
@@ -49,15 +94,15 @@ export function loadSpec(filePath: string, env = process.env): Spec {
   }
 
   const missing = new Set<string>()
-  data = resolveEnvRefs(data, missing, env)
-  if (missing.size > 0) {
+  data = resolveEnvRefs(data, missing, env, options.allowMissingSecrets === true)
+  if (missing.size > 0 && options.allowMissingSecrets !== true) {
     throw new Error(
       `unresolved secret reference(s) in ${filePath}: missing environment variable(s) ${[...missing].join(', ')}`
     )
   }
 
   try {
-    return validateSpec(data)
+    return { spec: validateSpec(data), missingSecrets: [...missing] }
   } catch (error) {
     if (error instanceof ZodError) {
       const details = error.issues
@@ -67,4 +112,8 @@ export function loadSpec(filePath: string, env = process.env): Spec {
     }
     throw error
   }
+}
+
+export function loadSpec(filePath: string, env = process.env): Spec {
+  return loadSpecResult(filePath, { env }).spec
 }

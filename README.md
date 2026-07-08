@@ -176,15 +176,16 @@ xo-apply export -o config.yaml          # add --insecure if self-signed cert
 Review `config.yaml` in a text editor — it's meant to be read. Edit anything
 you want changed on the new XO (retention, paths, jobs you no longer want).
 
-**2. Prepare the new XO** — two things xo-apply can't do for you (yet):
+**2. Prepare the new XO** — set any secret environment variables. Passwords are
+never exported: remotes using SMB or S3, and every server (pool connection),
+have their secrets replaced with `${env:...}` placeholders, and the export
+printed a warning naming each variable. Set those in your shell now — `apply`
+will stop with a clear error if any are missing.
 
-- **Connect your pool(s)** in the new XO's UI (Settings → Servers). Backup
-  jobs that select VMs by `names`/`uuids` need the new XO to see those VMs;
-  managing pool connections from the file is on the roadmap.
-- **Set any secret environment variables.** If your remotes use SMB or S3,
-  the export replaced their passwords with `${env:...}` placeholders and
-  printed a warning naming each variable. Set those in your shell now —
-  `apply` will stop with a clear error if any are missing.
+Pool connections come back with everything else: the `servers:` section connects
+your pool(s) so backup jobs that select VMs by `names`/`uuids` can see them.
+(You can still connect a pool manually in the UI first, under Settings →
+Servers, if you prefer.)
 
 **3. Apply to the new XO** — same tool, new URL and token:
 
@@ -317,8 +318,29 @@ password: ${env:SMB_BACKUP_PASSWORD}
 ```
 
 `xo-apply export` writes placeholders automatically and warns you which
-variables you need to set. Keep real values in your shell, a `.env` you don't
-commit, or your CI's secret store.
+variables you need to set.
+
+**Where the values come from.** At startup xo-apply loads a `.env` file from the
+current directory (already git-ignored), then reads `${env:...}` references and
+the `XO_URL`/`XO_TOKEN` connection settings from the environment. A real shell
+variable **always wins** over the file — the `.env` only fills in what you
+haven't already exported — so you choose per-variable: `export` it to override,
+or leave it to `.env`. Point elsewhere with `--env-file <path>`, or disable the
+file entirely with `--no-env-file`. For CI, skip the file and inject real env
+vars from your secret store.
+
+```dotenv
+# .env — never commit this
+XO_URL=https://xo.example.lan
+XO_TOKEN=your-token-here
+XO_SERVER_10_100_2_10_PASSWORD=the-pool-root-password
+SMB_BACKUP_PASSWORD=hunter2
+```
+
+See [.env.example](.env.example) for a template covering every secret xo-apply
+uses. `diff` does **not** require secrets to be set — it never compares
+passwords, so it warns about any unset `${env:...}` and proceeds; only `apply`
+(creating a user or server) needs the real value.
 
 ## How it talks to XO
 
@@ -336,7 +358,7 @@ No state file is kept: the running XO is always the source of "actual" state.
 - [x] Backup sequences
 - [x] Disaster Recovery / Continuous Replication (SR targets)
 - [x] Users & groups (local auth provider)
-- [ ] Servers (pool connections)
+- [x] Servers (pool connections)
 - [ ] ACLs / RBAC (ACL v2 REST endpoints)
 - [ ] Backup job health checks (partial: pass-through via schedule `settings`)
 

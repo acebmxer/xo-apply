@@ -1,6 +1,16 @@
 import { JsonRpcClient } from './jsonrpc.js'
 import { RestClient } from './rest.js'
 
+/**
+ * XO rejects server.enable/disable with an "incorrect state" error when the
+ * pool is already in (or moving toward) the requested connection state — e.g.
+ * a version that auto-connects on server.add leaves it "connecting", not
+ * "disconnected". That is not a real failure for us, so callers can ignore it.
+ */
+function isIncorrectStateError(error: unknown): boolean {
+  return error instanceof Error && /incorrect state/i.test(error.message)
+}
+
 // -- XO object shapes (the subset this tool reads/writes) -------------------
 
 export interface XoRemote {
@@ -103,6 +113,21 @@ export interface XoGroup {
   /** set for groups synchronized from an external auth provider */
   provider?: string
   providerGroupId?: string
+}
+
+export interface XoServer {
+  id: string
+  /** the pool master address this connection points at (identity key) */
+  host: string
+  username: string
+  label?: string
+  /** accept self-signed / otherwise-invalid TLS certs from the pool */
+  allowUnauthorized?: boolean
+  /** whether XO keeps this pool connected; toggled via enable/disable */
+  enabled?: boolean
+  readOnly?: boolean
+  status?: string
+  poolId?: string
 }
 
 export interface XoClientOptions {
@@ -295,6 +320,62 @@ export class XoClient {
 
   async deleteGroup(id: string): Promise<void> {
     await this.#rpc.call('group.delete', { id })
+  }
+
+  // -- servers (pool connections) --------------------------------------------
+
+  listServers(): Promise<XoServer[]> {
+    return this.#rest.get('/servers', {
+      fields: 'id,host,username,label,allowUnauthorized,enabled,readOnly,status,poolId',
+    })
+  }
+
+  /** server.add returns the new server's id as a plain string. */
+  createServer(params: {
+    host: string
+    username: string
+    password: string
+    label?: string
+    allowUnauthorized?: boolean
+  }): Promise<string> {
+    return this.#rpc.call('server.add', params)
+  }
+
+  /** Password is deliberately omitted here — updates never clobber it. */
+  async setServer(params: {
+    id: string
+    host?: string
+    username?: string
+    label?: string
+    allowUnauthorized?: boolean
+  }): Promise<void> {
+    await this.#rpc.call('server.set', params)
+  }
+
+  /**
+   * Connect the pool. Idempotent: some XO versions auto-connect on `server.add`,
+   * so the server may already be connecting/connected — XO then rejects enable
+   * with an "incorrect state" error, which we treat as success.
+   */
+  async enableServer(id: string): Promise<void> {
+    try {
+      await this.#rpc.call('server.enable', { id })
+    } catch (error) {
+      if (!isIncorrectStateError(error)) throw error
+    }
+  }
+
+  /** Disconnect the pool. Idempotent (already-disconnected is not an error). */
+  async disableServer(id: string): Promise<void> {
+    try {
+      await this.#rpc.call('server.disable', { id })
+    } catch (error) {
+      if (!isIncorrectStateError(error)) throw error
+    }
+  }
+
+  async removeServer(id: string): Promise<void> {
+    await this.#rpc.call('server.remove', { id })
   }
 
   close(): void {

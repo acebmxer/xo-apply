@@ -21,6 +21,7 @@ const emptyXo: ActualState = {
   vms: [],
   users: [],
   groups: [],
+  servers: [],
 }
 
 describe('user/group schema', () => {

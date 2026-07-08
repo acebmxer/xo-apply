@@ -179,11 +179,11 @@ export function renderPlan(plan: Plan, { prune = false } = {}): string {
   }
 
   // Users / groups — like remotes, they carry per-field `changes` directly.
-  const renderChangeItems = <D extends { name?: string; email?: string }>(
+  const renderChangeItems = <D extends { name?: string; email?: string; host?: string }>(
     title: string,
     managed: boolean,
     items: Array<{ kind: string; desired: D; changes: { field: string; from: unknown; to: unknown }[] }>,
-    untracked: Array<{ name?: string; email?: string }>,
+    untracked: Array<{ name?: string; email?: string; host?: string }>,
     label: (d: D) => string,
     detail: (d: D) => string,
     trailer?: string
@@ -205,7 +205,7 @@ export function renderPlan(plan: Plan, { prune = false } = {}): string {
       }
     }
     for (const u of untracked) {
-      const name = u.name ?? u.email ?? ''
+      const name = u.name ?? u.email ?? u.host ?? ''
       if (prune) {
         deletes++
         lines.push(pc.red(`  - delete  ${name}`))
@@ -238,6 +238,14 @@ export function renderPlan(plan: Plan, { prune = false } = {}): string {
     d => `${d.memberEmails.length} member${d.memberEmails.length === 1 ? '' : 's'}`,
     plan.externalGroupCount > 0 ? `${plan.externalGroupCount} external group(s) unmanaged` : undefined
   )
+  renderChangeItems(
+    'Servers',
+    plan.serversManaged,
+    plan.servers,
+    plan.untrackedServers,
+    d => d.host,
+    d => (d.enabled ? d.label ?? d.username : `${d.label ?? d.username}, disabled`)
+  )
 
   if (
     !plan.remotesManaged &&
@@ -246,9 +254,10 @@ export function renderPlan(plan: Plan, { prune = false } = {}): string {
     !plan.mirrorManaged &&
     !plan.sequencesManaged &&
     !plan.usersManaged &&
-    !plan.groupsManaged
+    !plan.groupsManaged &&
+    !plan.serversManaged
   ) {
-    lines.push(pc.dim('Nothing is managed by this file (no remotes/backupJobs/metadataBackups/mirrorBackups/sequences/users/groups sections).'))
+    lines.push(pc.dim('Nothing is managed by this file (no remotes/backupJobs/metadataBackups/mirrorBackups/sequences/users/groups/servers sections).'))
     lines.push('')
   }
 
@@ -259,7 +268,8 @@ export function renderPlan(plan: Plan, { prune = false } = {}): string {
     plan.untrackedMirrorJobs.length +
     plan.untrackedSequences.length +
     plan.untrackedUsers.length +
-    plan.untrackedGroups.length
+    plan.untrackedGroups.length +
+    plan.untrackedServers.length
   const summaryParts = [
     pc.green(`${creates} to create`),
     pc.yellow(`${updates} to update`),

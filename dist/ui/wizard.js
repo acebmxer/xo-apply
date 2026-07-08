@@ -3,7 +3,7 @@ import { relative, resolve } from 'node:path';
 import { cancel, confirm, intro, isCancel, log, note, outro, password, select, spinner, text, } from '@clack/prompts';
 import pc from 'picocolors';
 import { XoClient } from '../client/index.js';
-import { loadSpec } from '../config/load.js';
+import { loadSpecResult } from '../config/load.js';
 import { applyPlan, fetchActualState } from '../engine/apply.js';
 import { renderPlan } from '../engine/diff.js';
 import { buildPlan, planHasChanges, planHasDrift, planUntrackedCount } from '../engine/plan.js';
@@ -100,7 +100,12 @@ function showPlan(plan, prune) {
 /** diff / apply flow: pick a file, review the plan, optionally reconcile. */
 async function runDiffApply(client, mode) {
     const configPath = await promptConfigPath();
-    const spec = loadSpec(configPath);
+    // diff never uses secret values, so tolerate unresolved ${env:...} and warn;
+    // apply must resolve everything (it needs real passwords to create).
+    const { spec, missingSecrets } = loadSpecResult(configPath, { allowMissingSecrets: mode === 'diff' });
+    for (const name of missingSecrets) {
+        log.warn(`${name} is not set; its secret is ignored for diff (required for apply)`);
+    }
     let prune = false;
     if (mode === 'apply') {
         prune = unwrap(await confirm({

@@ -186,7 +186,7 @@ export function renderPlan(plan, { prune = false } = {}) {
             }
         }
         for (const u of untracked) {
-            const name = u.name ?? u.email ?? '';
+            const name = u.name ?? u.email ?? u.host ?? '';
             if (prune) {
                 deletes++;
                 lines.push(pc.red(`  - delete  ${name}`));
@@ -204,14 +204,16 @@ export function renderPlan(plan, { prune = false } = {}) {
     };
     renderChangeItems('Users', plan.usersManaged, plan.users, plan.untrackedUsers, d => d.email, d => d.permission, plan.externalUserCount > 0 ? `${plan.externalUserCount} external user(s) unmanaged` : undefined);
     renderChangeItems('Groups', plan.groupsManaged, plan.groups, plan.untrackedGroups, d => d.name, d => `${d.memberEmails.length} member${d.memberEmails.length === 1 ? '' : 's'}`, plan.externalGroupCount > 0 ? `${plan.externalGroupCount} external group(s) unmanaged` : undefined);
+    renderChangeItems('Servers', plan.serversManaged, plan.servers, plan.untrackedServers, d => d.host, d => (d.enabled ? d.label ?? d.username : `${d.label ?? d.username}, disabled`));
     if (!plan.remotesManaged &&
         !plan.jobsManaged &&
         !plan.metadataManaged &&
         !plan.mirrorManaged &&
         !plan.sequencesManaged &&
         !plan.usersManaged &&
-        !plan.groupsManaged) {
-        lines.push(pc.dim('Nothing is managed by this file (no remotes/backupJobs/metadataBackups/mirrorBackups/sequences/users/groups sections).'));
+        !plan.groupsManaged &&
+        !plan.serversManaged) {
+        lines.push(pc.dim('Nothing is managed by this file (no remotes/backupJobs/metadataBackups/mirrorBackups/sequences/users/groups/servers sections).'));
         lines.push('');
     }
     const untracked = plan.untrackedRemotes.length +
@@ -220,7 +222,8 @@ export function renderPlan(plan, { prune = false } = {}) {
         plan.untrackedMirrorJobs.length +
         plan.untrackedSequences.length +
         plan.untrackedUsers.length +
-        plan.untrackedGroups.length;
+        plan.untrackedGroups.length +
+        plan.untrackedServers.length;
     const summaryParts = [
         pc.green(`${creates} to create`),
         pc.yellow(`${updates} to update`),

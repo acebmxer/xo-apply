@@ -153,3 +153,21 @@ users:
 groups:
   - name: operators
     users: [ops@example.com]
+
+# Servers (pool connections). Each entry is a XenServer/XCP-ng pool XO connects
+# to, keyed by `host` (the pool master address). Jobs that select VMs by
+# name/uuid need the pool connected first, so declaring servers here lets a
+# fresh XO be rebuilt end to end.
+#
+# Like user passwords, the connection password is write-only: XO never returns
+# it, so it can't be exported or diffed. `export` writes a ${env:...} placeholder
+# and warns; set that variable before `apply`. The password is used only when a
+# server is CREATED — for an existing server it is ignored (change it in the XO
+# UI). Only label / username / allowUnauthorized / enabled are compared for drift.
+servers:
+  - host: 192.168.1.10
+    username: root
+    password: ${env:XO_SERVER_192_168_1_10_PASSWORD}   # required to create
+    label: Production pool
+    # allowUnauthorized: true   # accept a self-signed pool certificate (default: false)
+    # enabled: false            # add the server but leave it disconnected (default: true)

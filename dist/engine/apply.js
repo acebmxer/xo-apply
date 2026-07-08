@@ -5,7 +5,7 @@ import { buildParamsVector, SEQUENCE_METHOD } from '../resources/sequences.js';
 import { idPattern } from '../resources/patterns.js';
 import { scheduleIndexKey, } from './plan.js';
 export async function fetchActualState(client) {
-    const [remotes, jobs, metadataJobs, mirrorJobs, callJobs, schedules, vms, users, groups] = await Promise.all([
+    const [remotes, jobs, metadataJobs, mirrorJobs, callJobs, schedules, vms, users, groups, servers] = await Promise.all([
         client.listRemotes(),
         client.listBackupJobs(),
         client.listMetadataBackupJobs(),
@@ -15,8 +15,9 @@ export async function fetchActualState(client) {
         client.listVms(),
         client.listUsers(),
         client.listGroups(),
+        client.listServers(),
     ]);
-    return { remotes, jobs, metadataJobs, mirrorJobs, callJobs, schedules, vms, users, groups };
+    return { remotes, jobs, metadataJobs, mirrorJobs, callJobs, schedules, vms, users, groups, servers };
 }
 function scheduleCreateBody(desired) {
     return {
@@ -89,6 +90,61 @@ export async function applyPlan(client, plan, options = {}) {
             scheduleIndex.set(scheduleIndexKey(jobName, scheduleName), id);
         }
     };
+    // -- 1b. servers (pool connections) — a prerequisite for VM-selecting jobs -
+    for (const serverPlan of plan.servers) {
+        const { desired } = serverPlan;
+        if (serverPlan.kind === 'create') {
+            // server.add requires a password; a hand-written file may omit it.
+            if (desired.password === undefined) {
+                throw new Error(`server "${desired.host}": cannot create without a password — add a \`password:\` (or \`password: \${env:...}\`) line and re-apply`);
+            }
+            const id = await client.createServer({
+                host: desired.host,
+                username: desired.username,
+                password: desired.password,
+                ...(desired.label !== undefined ? { label: desired.label } : {}),
+                allowUnauthorized: desired.allowUnauthorized,
+            });
+            // server.add creates a disconnected server; connect it if desired.
+            if (desired.enabled) {
+                await client.enableServer(id);
+            }
+            log(`created server ${desired.host}`);
+        }
+        else if (serverPlan.kind === 'update' && serverPlan.actual !== undefined) {
+            // Only non-password fields are reconciled on update. The password is
+            // deliberately NOT touched (the file's is often the ${env:...} the user
+            // set for a fresh import); change an existing server's password in XO.
+            const setBody = { id: serverPlan.actual.id };
+            let needsSet = false;
+            for (const change of serverPlan.changes) {
+                if (change.field === 'label') {
+                    setBody.label = desired.label ?? '';
+                    needsSet = true;
+                }
+                else if (change.field === 'username') {
+                    setBody.username = desired.username;
+                    needsSet = true;
+                }
+                else if (change.field === 'allowUnauthorized') {
+                    setBody.allowUnauthorized = desired.allowUnauthorized;
+                    needsSet = true;
+                }
+            }
+            if (needsSet) {
+                await client.setServer(setBody);
+            }
+            if (serverPlan.changes.some(c => c.field === 'enabled')) {
+                if (desired.enabled) {
+                    await client.enableServer(serverPlan.actual.id);
+                }
+                else {
+                    await client.disableServer(serverPlan.actual.id);
+                }
+            }
+            log(`updated server ${desired.host}`);
+        }
+    }
     // -- 2. VM backup jobs (incl. DR/CR) --------------------------------------
     for (const jobPlan of plan.jobs) {
         if (jobPlan.kind === 'create') {
@@ -233,6 +289,12 @@ export async function applyPlan(client, plan, options = {}) {
         for (const remote of plan.untrackedRemotes) {
             await client.deleteRemote(remote.id);
             log(`deleted remote ${remote.name}`);
+        }
+        // servers last: jobs that select VMs by name/uuid rely on the pool being
+        // connected, so disconnect/remove only after those jobs are gone.
+        for (const server of plan.untrackedServers) {
+            await client.removeServer(server.id);
+            log(`deleted server ${server.host}`);
         }
     }
 }

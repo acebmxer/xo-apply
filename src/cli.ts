@@ -4,7 +4,8 @@ import { createInterface } from 'node:readline/promises'
 import { Command } from 'commander'
 import pc from 'picocolors'
 import { XoClient } from './client/index.js'
-import { loadSpec } from './config/load.js'
+import { loadDotenv } from './config/dotenv.js'
+import { loadSpec, loadSpecResult } from './config/load.js'
 import { applyPlan, fetchActualState } from './engine/apply.js'
 import { renderPlan } from './engine/diff.js'
 import { buildPlan, planHasChanges, planHasDrift, planUntrackedCount } from './engine/plan.js'
@@ -17,6 +18,8 @@ interface GlobalOptions {
   url?: string
   token?: string
   insecure?: boolean
+  /** path to a .env file, or false when --no-env-file was passed */
+  envFile?: string | false
 }
 
 function getConnection(options: GlobalOptions): { url: string; token: string; insecure: boolean } {
@@ -71,6 +74,22 @@ const program = new Command()
   .option('--url <url>', 'XO base URL (or XO_URL env var), e.g. https://xo.example.lan')
   .option('--token <token>', 'XO authentication token (or XO_TOKEN env var)')
   .option('--insecure', 'skip TLS certificate verification (self-signed certs)')
+  .option('--env-file <path>', 'load environment variables from this file (real env vars still win)', '.env')
+  .option('--no-env-file', 'do not load a .env file')
+  // Load the .env file (if any) before any command runs. A real shell env var
+  // always takes precedence — the file only fills in what is not already set —
+  // so the user chooses per-variable: export it to override, or leave it to .env.
+  .hook('preAction', thisCommand => {
+    const { envFile } = thisCommand.opts<GlobalOptions>()
+    if (envFile === false) return
+    try {
+      loadDotenv(typeof envFile === 'string' ? envFile : '.env')
+    } catch (error) {
+      // a missing .env is silent; only a real read error surfaces here
+      console.error(pc.red(`error: ${error instanceof Error ? error.message : String(error)}`))
+      process.exit(1)
+    }
+  })
 
 program
   .command('export')
@@ -105,7 +124,12 @@ program
   .action(async (configPath: string) => {
     try {
       const exitCode = await withClient(program.opts<GlobalOptions>(), async client => {
-        const spec = loadSpec(configPath)
+        // diff never uses secret values, so tolerate unresolved ${env:...} and
+        // just warn — the round-trip after `export` works without setting them.
+        const { spec, missingSecrets } = loadSpecResult(configPath, { allowMissingSecrets: true })
+        for (const name of missingSecrets) {
+          console.error(pc.yellow(`warning: ${name} is not set; its secret is ignored for diff (required for apply)`))
+        }
         const actual = await fetchActualState(client)
         const plan = buildPlan(spec, actual)
         console.log(renderPlan(plan))
@@ -169,6 +193,12 @@ program
 // inside the wizard via the same env-var fallback the subcommands use.
 program.action(async () => {
   try {
+    // The preAction hook does not run for the default (no-subcommand) action,
+    // so load the .env file here too before the wizard reads env vars.
+    const { envFile } = program.opts<GlobalOptions>()
+    if (envFile !== false) {
+      loadDotenv(typeof envFile === 'string' ? envFile : '.env')
+    }
     process.exit(await runWizard(program.opts<GlobalOptions>()))
   } catch (error) {
     fail(error)

@@ -256,6 +256,31 @@ export const groupSpecSchema = z
 export type GroupSpec = z.infer<typeof groupSpecSchema>
 
 // ---------------------------------------------------------------------------
+// Servers (pool connections)
+// ---------------------------------------------------------------------------
+
+export const serverSpecSchema = z
+  .object({
+    // the pool master address, e.g. "192.168.1.10" — the identity key
+    host: z.string().min(1),
+    // login used to connect to the pool (typically "root")
+    username: z.string().min(1),
+    // connection password. Use a ${env:...} reference — it is resolved before
+    // validation (see config/load.ts). XO never returns it, so it is only ever
+    // written, never compared. Required to create a new server; omitting it
+    // leaves an existing server's password untouched on update.
+    password: z.string().min(1).optional(),
+    // display name shown in XO's Servers list
+    label: z.string().optional(),
+    // accept self-signed / otherwise-invalid TLS certs from the pool
+    allowUnauthorized: z.boolean().default(false),
+    // whether XO keeps this pool connected
+    enabled: z.boolean().default(true),
+  })
+  .strict()
+export type ServerSpec = z.infer<typeof serverSpecSchema>
+
+// ---------------------------------------------------------------------------
 // Top-level spec
 // ---------------------------------------------------------------------------
 
@@ -271,6 +296,7 @@ export const specSchema = z
     sequences: z.array(sequenceSpecSchema).optional(),
     users: z.array(userSpecSchema).optional(),
     groups: z.array(groupSpecSchema).optional(),
+    servers: z.array(serverSpecSchema).optional(),
   })
   .strict()
 export type Spec = z.infer<typeof specSchema>
@@ -319,6 +345,10 @@ export function validateSpec(data: unknown): Spec {
     if (memberDupes.length > 0) {
       throw new Error(`group "${group.name}": duplicate member(s): ${[...new Set(memberDupes)].join(', ')}`)
     }
+  }
+  const serverDupes = dupes((spec.servers ?? []).map(s => s.host))
+  if (serverDupes.length > 0) {
+    throw new Error(`duplicate server host(s): ${[...new Set(serverDupes)].join(', ')}`)
   }
   return spec
 }

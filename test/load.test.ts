@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { loadSpec, resolveEnvRefs } from '../src/config/load.js'
+import { loadSpec, loadSpecResult, resolveEnvRefs } from '../src/config/load.js'
 
 const writeTmp = (content: string): string => {
   const dir = mkdtempSync(join(tmpdir(), 'xo-apply-test-'))
@@ -23,6 +23,13 @@ describe('resolveEnvRefs', () => {
     const missing = new Set<string>()
     resolveEnvRefs({ a: '${env:NOPE}', b: '${env:ALSO_NOPE}' }, missing, {})
     expect([...missing].sort()).toEqual(['ALSO_NOPE', 'NOPE'])
+  })
+
+  it('drops keys with unresolved refs when dropUnresolved is set', () => {
+    const missing = new Set<string>()
+    const result = resolveEnvRefs({ keep: 'plain', secret: '${env:NOPE}' }, missing, {}, true)
+    expect(result).toEqual({ keep: 'plain' })
+    expect([...missing]).toEqual(['NOPE'])
   })
 })
 
@@ -65,6 +72,22 @@ describe('loadSpec', () => {
       ].join('\n')
     )
     expect(() => loadSpec(file)).toThrow(/XO_APPLY_TEST_SURELY_UNSET/)
+  })
+
+  it('tolerates missing secrets and drops them when allowMissingSecrets is set', () => {
+    const file = writeTmp(
+      [
+        'servers:',
+        '  - host: 10.0.0.1',
+        '    username: root',
+        '    password: ${env:XO_APPLY_TEST_SURELY_UNSET}',
+      ].join('\n')
+    )
+    const { spec, missingSecrets } = loadSpecResult(file, { allowMissingSecrets: true })
+    expect(missingSecrets).toEqual(['XO_APPLY_TEST_SURELY_UNSET'])
+    // the unresolved password is dropped, not left as a literal placeholder
+    expect(spec.servers?.[0].password).toBeUndefined()
+    expect(spec.servers?.[0].host).toBe('10.0.0.1')
   })
 
   it('fails on unknown fields', () => {
